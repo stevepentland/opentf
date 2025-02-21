@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package objchange
@@ -9,7 +11,7 @@ import (
 	"github.com/apparentlymart/go-dump/dump"
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
 )
 
 func TestProposedNew(t *testing.T) {
@@ -149,7 +151,7 @@ func TestProposedNew(t *testing.T) {
 					"boz": cty.String,
 				})),
 			}),
-			// The bloop attribue and baz block does not exist in the config,
+			// The bloop attribute and baz block does not exist in the config,
 			// and therefore shouldn't be planned.
 			cty.ObjectVal(map[string]cty.Value{
 				"foo": cty.StringVal("bar"),

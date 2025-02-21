@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -43,7 +45,7 @@ func (c *WorkspaceShowCommand) AutocompleteFlags() complete.Flags {
 
 func (c *WorkspaceShowCommand) Help() string {
 	helpText := `
-Usage: opentf [global options] workspace show
+Usage: tofu [global options] workspace show
 
   Show the name of the current workspace.
 `

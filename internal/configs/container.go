@@ -1,9 +1,11 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package configs
 
-import "github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+import "github.com/opentofu/opentofu/internal/addrs"
 
 // Container provides an interface for scoped resources.
 //

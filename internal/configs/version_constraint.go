@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package configs
@@ -8,12 +10,13 @@ import (
 
 	version "github.com/hashicorp/go-version"
 	"github.com/hashicorp/hcl/v2"
+	"github.com/opentofu/opentofu/internal/lang/marks"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/convert"
 )
 
 // VersionConstraint represents a version constraint on some resource
-// (e.g. Terraform Core, a provider, a module, ...) that carries with it
+// (e.g. OpenTofu Core, a provider, a module, ...) that carries with it
 // a source range so that a helpful diagnostic can be printed in the event
 // that a particular constraint does not match.
 type VersionConstraint struct {
@@ -22,14 +25,28 @@ type VersionConstraint struct {
 }
 
 func decodeVersionConstraint(attr *hcl.Attribute) (VersionConstraint, hcl.Diagnostics) {
+	val, diags := attr.Expr.Value(nil)
+	if diags.HasErrors() {
+		return VersionConstraint{}, diags
+	}
+	return decodeVersionConstraintValue(attr, val)
+}
+func decodeVersionConstraintValue(attr *hcl.Attribute, val cty.Value) (VersionConstraint, hcl.Diagnostics) {
+	var diags hcl.Diagnostics
+
 	ret := VersionConstraint{
 		DeclRange: attr.Range,
 	}
 
-	val, diags := attr.Expr.Value(nil)
-	if diags.HasErrors() {
-		return ret, diags
+	if val.HasMark(marks.Sensitive) {
+		return ret, diags.Append(&hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  "Invalid version constraint",
+			Detail:   fmt.Sprintf("Sensitive values, or values derived from sensitive values, cannot be used as %s arguments.", attr.Name),
+			Subject:  attr.Expr.Range().Ptr(),
+		})
 	}
+
 	var err error
 	val, err = convert.Convert(val, cty.String)
 	if err != nil {

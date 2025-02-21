@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package states
@@ -9,11 +11,11 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/getproviders"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/getproviders"
 )
 
-// State is the top-level type of a Terraform state.
+// State is the top-level type of OpenTofu state.
 //
 // A state should be mutated only via its accessor methods, to ensure that
 // invariants are preserved.
@@ -38,7 +40,7 @@ type State struct {
 	// from the previous run at all, which is subtly different than the
 	// previous run having affirmatively recorded that there are no checks
 	// to run. For example, if this object was created from a state snapshot
-	// created by a version of Terraform that didn't yet support checks
+	// created by a version of OpenTofu that didn't yet support checks
 	// then this field will be nil.
 	CheckResults *CheckResults
 }
@@ -92,7 +94,7 @@ func (s *State) Module(addr addrs.ModuleInstance) *Module {
 func (s *State) ModuleInstances(addr addrs.Module) []*Module {
 	var ms []*Module
 	for _, m := range s.Modules {
-		if m.Addr.Module().Equal(addr) {
+		if m.Addr.IsForModule(addr) {
 			ms = append(ms, m)
 		}
 	}
@@ -173,7 +175,7 @@ func (s *State) EnsureModule(addr addrs.ModuleInstance) *Module {
 //
 // A true result would suggest that just discarding this state without first
 // destroying these objects could leave "dangling" objects in remote systems,
-// no longer tracked by any Terraform state.
+// no longer tracked by any OpenTofu state.
 func (s *State) HasManagedResourceInstanceObjects() bool {
 	if s == nil {
 		return false
@@ -220,7 +222,7 @@ func (s *State) Resources(addr addrs.ConfigResource) []*Resource {
 // are tracked in this state.
 //
 // This result is the set of objects that would be effectively "forgotten"
-// (like "terraform state rm") if this state were totally discarded, such as
+// (like "tofu state rm") if this state were totally discarded, such as
 // by deleting a workspace. This function is intended only for reporting
 // context in error messages, such as when we reject deleting a "non-empty"
 // workspace as detected by s.HasManagedResourceInstanceObjects.
@@ -369,11 +371,11 @@ func (s *State) ProviderRequirements() getproviders.Requirements {
 // PruneResourceHusks is a specialized method that will remove any Resource
 // objects that do not contain any instances, even if they have an EachMode.
 //
-// This should generally be used only after a "terraform destroy" operation,
+// This should generally be used only after a "tofu destroy" operation,
 // to finalize the cleanup of the state. It is not correct to use this after
 // other operations because if a resource has "count = 0" or "for_each" over
 // an empty collection then we want to retain it in the state so that references
-// to it, particularly in "strange" contexts like "terraform console", can be
+// to it, particularly in "strange" contexts like "tofu console", can be
 // properly resolved.
 //
 // This method MUST NOT be called concurrently with other readers and writers
@@ -431,7 +433,7 @@ func (s *State) MoveAbsResource(src, dst addrs.AbsResource) {
 // or not the move occurred. This function will panic if either the src does not
 // exist or the dst does exist (but not both).
 func (s *State) MaybeMoveAbsResource(src, dst addrs.AbsResource) bool {
-	// Get the source and destinatation addresses from state.
+	// Get the source and destination addresses from state.
 	rs := s.Resource(src)
 	ds := s.Resource(dst)
 
@@ -502,7 +504,7 @@ func (s *State) MoveAbsResourceInstance(src, dst addrs.AbsResourceInstance) {
 // MaybeMoveAbsResourceInstance moves the given src AbsResourceInstance's
 // current state to the new dst address. This function will succeed if both the
 // src address does not exist in state and the dst address does; the return
-// value indicates whether or not the move occured. This function will panic if
+// value indicates whether or not the move occurred. This function will panic if
 // either the src does not exist or the dst does exist (but not both).
 func (s *State) MaybeMoveAbsResourceInstance(src, dst addrs.AbsResourceInstance) bool {
 	// get the src and dst resource instances from state
@@ -568,7 +570,7 @@ func (s *State) MoveModuleInstance(src, dst addrs.ModuleInstance) {
 // MaybeMoveModuleInstance moves the given src ModuleInstance's current state to
 // the new dst address. This function will succeed if both the src address does
 // not exist in state and the dst address does; the return value indicates
-// whether or not the move occured. This function will panic if either the src
+// whether or not the move occurred. This function will panic if either the src
 // does not exist or the dst does exist (but not both).
 func (s *State) MaybeMoveModuleInstance(src, dst addrs.ModuleInstance) bool {
 	if src.IsRoot() || dst.IsRoot() {

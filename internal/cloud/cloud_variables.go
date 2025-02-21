@@ -1,18 +1,20 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package cloud
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
-func allowedSourceType(source opentf.ValueSourceType) bool {
-	return source == opentf.ValueFromNamedFile || source == opentf.ValueFromCLIArg || source == opentf.ValueFromEnvVar
+func allowedSourceType(source tofu.ValueSourceType) bool {
+	return source == tofu.ValueFromNamedFile || source == tofu.ValueFromCLIArg || source == tofu.ValueFromEnvVar
 }
 
 // ParseCloudRunVariables accepts a mapping of unparsed values and a mapping of variable

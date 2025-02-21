@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package cloud
@@ -21,11 +23,11 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	tfe "github.com/hashicorp/go-tfe"
 	"github.com/hashicorp/jsonapi"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/logging"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/command/jsonformat"
+	"github.com/opentofu/opentofu/internal/logging"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 var (
@@ -70,7 +72,7 @@ func (b *Cloud) waitForRun(stopCtx, cancelCtx context.Context, op *backend.Opera
 				b.CLI.Output(b.Colorize().Color(fmt.Sprintf("Waiting for the %s to start...\n", opType)))
 			}
 			if i > 0 && b.CLI != nil {
-				// Insert a blank line to separate the ouputs.
+				// Insert a blank line to separate the outputs.
 				b.CLI.Output("")
 			}
 			return r, nil
@@ -405,7 +407,7 @@ func (b *Cloud) checkPolicy(stopCtx, cancelCtx context.Context, op *backend.Oper
 			} else if !b.input {
 				return errPolicyOverrideNeedsUIConfirmation
 			} else {
-				opts := &opentf.InputOpts{
+				opts := &tofu.InputOpts{
 					Id:          "override",
 					Query:       "\nDo you want to override the soft failed policy check?",
 					Description: "Only 'override' will be accepted to override.",
@@ -437,7 +439,7 @@ func (b *Cloud) checkPolicy(stopCtx, cancelCtx context.Context, op *backend.Oper
 	return nil
 }
 
-func (b *Cloud) confirm(stopCtx context.Context, op *backend.Operation, opts *opentf.InputOpts, r *tfe.Run, keyword string) error {
+func (b *Cloud) confirm(stopCtx context.Context, op *backend.Operation, opts *tofu.InputOpts, r *tfe.Run, keyword string) error {
 	doneCtx, cancel := context.WithCancel(stopCtx)
 	result := make(chan error, 2)
 
@@ -502,7 +504,7 @@ func (b *Cloud) confirm(stopCtx context.Context, op *backend.Operation, opts *op
 	result <- func() error {
 		v, err := op.UIIn.Input(doneCtx, opts)
 		if err != nil && err != context.Canceled && stopCtx.Err() != context.Canceled {
-			return fmt.Errorf("Error asking %s: %v", opts.Id, err)
+			return fmt.Errorf("Error asking %s: %w", opts.Id, err)
 		}
 
 		// We return the error of our parent channel as we don't

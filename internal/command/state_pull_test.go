@@ -1,11 +1,13 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
 
 import (
 	"bytes"
-	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 
@@ -18,7 +20,7 @@ func TestStatePull(t *testing.T) {
 	testCopyDir(t, testFixturePath("state-pull-backend"), td)
 	defer testChdir(t, td)()
 
-	expected, err := ioutil.ReadFile("local-state.tfstate")
+	expected, err := os.ReadFile("local-state.tfstate")
 	if err != nil {
 		t.Fatalf("error reading state: %v", err)
 	}

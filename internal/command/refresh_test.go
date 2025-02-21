@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -6,7 +8,6 @@ package command
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,13 +20,14 @@ import (
 	"github.com/mitchellh/cli"
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 var equateEmpty = cmpopts.EquateEmpty()
@@ -74,7 +76,7 @@ func TestRefresh(t *testing.T) {
 		t.Fatalf("err: %s", err)
 	}
 
-	newStateFile, err := statefile.Read(f)
+	newStateFile, err := statefile.Read(f, encryption.StateEncryptionDisabled())
 	f.Close()
 	if err != nil {
 		t.Fatalf("err: %s", err)
@@ -217,7 +219,7 @@ func TestRefresh_cwd(t *testing.T) {
 		t.Fatalf("err: %s", err)
 	}
 
-	newStateFile, err := statefile.Read(f)
+	newStateFile, err := statefile.Read(f, encryption.StateEncryptionDisabled())
 	f.Close()
 	if err != nil {
 		t.Fatalf("err: %s", err)
@@ -242,7 +244,7 @@ func TestRefresh_defaultState(t *testing.T) {
 	// default filename.
 	statePath := testStateFile(t, originalState)
 
-	localState := statemgr.NewFilesystem(statePath)
+	localState := statemgr.NewFilesystem(statePath, encryption.StateEncryptionDisabled())
 	if err := localState.RefreshState(); err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +298,7 @@ func TestRefresh_defaultState(t *testing.T) {
 	actual := newState.RootModule().Resources["test_instance.foo"].Instances[addrs.NoKey].Current
 	expected := &states.ResourceInstanceObjectSrc{
 		Status:       states.ObjectReady,
-		AttrsJSON:    []byte("{\n            \"ami\": null,\n            \"id\": \"yes\"\n          }"),
+		AttrsJSON:    []byte(`{"ami":null,"id":"yes"}`),
 		Dependencies: []addrs.ConfigResource{},
 	}
 	if !reflect.DeepEqual(actual, expected) {
@@ -322,7 +324,7 @@ func TestRefresh_outPath(t *testing.T) {
 	statePath := testStateFile(t, state)
 
 	// Output path
-	outf, err := ioutil.TempFile(td, "tf")
+	outf, err := os.CreateTemp(td, "tf")
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
@@ -366,7 +368,7 @@ func TestRefresh_outPath(t *testing.T) {
 	actual := newState.RootModule().Resources["test_instance.foo"].Instances[addrs.NoKey].Current
 	expected := &states.ResourceInstanceObjectSrc{
 		Status:       states.ObjectReady,
-		AttrsJSON:    []byte("{\n            \"ami\": null,\n            \"id\": \"yes\"\n          }"),
+		AttrsJSON:    []byte(`{"ami":null,"id":"yes"}`),
 		Dependencies: []addrs.ConfigResource{},
 	}
 	if !reflect.DeepEqual(actual, expected) {
@@ -438,7 +440,7 @@ func TestRefresh_varFile(t *testing.T) {
 	p.GetProviderSchemaResponse = refreshVarFixtureSchema()
 
 	varFilePath := testTempFile(t)
-	if err := ioutil.WriteFile(varFilePath, []byte(refreshVarFile), 0644); err != nil {
+	if err := os.WriteFile(varFilePath, []byte(refreshVarFile), 0644); err != nil {
 		t.Fatalf("err: %s", err)
 	}
 
@@ -480,7 +482,7 @@ func TestRefresh_varFileDefault(t *testing.T) {
 	p.GetProviderSchemaResponse = refreshVarFixtureSchema()
 
 	varFilePath := filepath.Join(td, "terraform.tfvars")
-	if err := ioutil.WriteFile(varFilePath, []byte(refreshVarFile), 0644); err != nil {
+	if err := os.WriteFile(varFilePath, []byte(refreshVarFile), 0644); err != nil {
 		t.Fatalf("err: %s", err)
 	}
 
@@ -559,7 +561,7 @@ func TestRefresh_backup(t *testing.T) {
 	statePath := testStateFile(t, state)
 
 	// Output path
-	outf, err := ioutil.TempFile(td, "tf")
+	outf, err := os.CreateTemp(td, "tf")
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
@@ -568,13 +570,13 @@ func TestRefresh_backup(t *testing.T) {
 
 	// Need to put some state content in the output file so that there's
 	// something to back up.
-	err = statefile.Write(statefile.New(state, "baz", 0), outf)
+	err = statefile.Write(statefile.New(state, "baz", 0), outf, encryption.StateEncryptionDisabled())
 	if err != nil {
 		t.Fatalf("error writing initial output state file %s", err)
 	}
 
 	// Backup path
-	backupf, err := ioutil.TempFile(td, "tf")
+	backupf, err := os.CreateTemp(td, "tf")
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
@@ -619,7 +621,7 @@ func TestRefresh_backup(t *testing.T) {
 	actual := newState.RootModule().Resources["test_instance.foo"].Instances[addrs.NoKey].Current
 	expected := &states.ResourceInstanceObjectSrc{
 		Status:       states.ObjectReady,
-		AttrsJSON:    []byte("{\n            \"ami\": null,\n            \"id\": \"changed\"\n          }"),
+		AttrsJSON:    []byte(`{"ami":null,"id":"changed"}`),
 		Dependencies: []addrs.ConfigResource{},
 	}
 	if !reflect.DeepEqual(actual, expected) {
@@ -644,7 +646,7 @@ func TestRefresh_disableBackup(t *testing.T) {
 	statePath := testStateFile(t, state)
 
 	// Output path
-	outf, err := ioutil.TempFile(td, "tf")
+	outf, err := os.CreateTemp(td, "tf")
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
@@ -691,7 +693,7 @@ func TestRefresh_disableBackup(t *testing.T) {
 	actual := newState.RootModule().Resources["test_instance.foo"].Instances[addrs.NoKey].Current
 	expected := &states.ResourceInstanceObjectSrc{
 		Status:       states.ObjectReady,
-		AttrsJSON:    []byte("{\n            \"ami\": null,\n            \"id\": \"yes\"\n          }"),
+		AttrsJSON:    []byte(`{"ami":null,"id":"yes"}`),
 		Dependencies: []addrs.ConfigResource{},
 	}
 	if !reflect.DeepEqual(actual, expected) {
@@ -850,6 +852,100 @@ func TestRefresh_targetFlagsDiags(t *testing.T) {
 	}
 }
 
+// Config with multiple resources, targeted refresh with exclude
+func TestRefresh_excluded(t *testing.T) {
+	td := t.TempDir()
+	testCopyDir(t, testFixturePath("refresh-targeted"), td)
+	defer testChdir(t, td)()
+
+	state := testState()
+	statePath := testStateFile(t, state)
+
+	p := testProvider()
+	p.GetProviderSchemaResponse = &providers.GetProviderSchemaResponse{
+		ResourceTypes: map[string]providers.Schema{
+			"test_instance": {
+				Block: &configschema.Block{
+					Attributes: map[string]*configschema.Attribute{
+						"id": {Type: cty.String, Computed: true},
+					},
+				},
+			},
+		},
+	}
+	p.PlanResourceChangeFn = func(req providers.PlanResourceChangeRequest) providers.PlanResourceChangeResponse {
+		return providers.PlanResourceChangeResponse{
+			PlannedState: req.ProposedNewState,
+		}
+	}
+
+	view, done := testView(t)
+	c := &RefreshCommand{
+		Meta: Meta{
+			testingOverrides: metaOverridesForProvider(p),
+			View:             view,
+		},
+	}
+
+	args := []string{
+		"-exclude", "test_instance.bar",
+		"-state", statePath,
+	}
+	code := c.Run(args)
+	output := done(t)
+	if code != 0 {
+		t.Fatalf("bad: %d\n\n%s", code, output.Stderr())
+	}
+
+	got := output.Stdout()
+	if want := "test_instance.foo: Refreshing"; !strings.Contains(got, want) {
+		t.Fatalf("expected output to contain %q, got:\n%s", want, got)
+	}
+	if doNotWant := "test_instance.bar: Refreshing"; strings.Contains(got, doNotWant) {
+		t.Fatalf("expected output not to contain %q, got:\n%s", doNotWant, got)
+	}
+}
+
+// Diagnostics for invalid -exclude flags
+func TestRefresh_excludeFlagsDiags(t *testing.T) {
+	testCases := map[string]string{
+		"test_instance.": "Dot must be followed by attribute name.",
+		"test_instance":  "Resource specification must include a resource type and name.",
+	}
+
+	for exclude, wantDiag := range testCases {
+		t.Run(exclude, func(t *testing.T) {
+			td := testTempDir(t)
+			defer os.RemoveAll(td)
+			defer testChdir(t, td)()
+
+			view, done := testView(t)
+			c := &RefreshCommand{
+				Meta: Meta{
+					View: view,
+				},
+			}
+
+			args := []string{
+				"-exclude", exclude,
+			}
+			code := c.Run(args)
+			output := done(t)
+			if code != 1 {
+				t.Fatalf("bad: %d\n\n%s", code, output.Stderr())
+			}
+
+			got := output.Stderr()
+			if !strings.Contains(got, exclude) {
+				t.Fatalf("bad error output, want %q, got:\n%s", exclude, got)
+			}
+			if !strings.Contains(got, wantDiag) {
+				t.Fatalf("bad error output, want %q, got:\n%s", wantDiag, got)
+			}
+		})
+	}
+}
+
 func TestRefresh_warnings(t *testing.T) {
 	// Create a temporary working directory that is empty
 	td := t.TempDir()
@@ -911,7 +1007,7 @@ func TestRefresh_warnings(t *testing.T) {
 		wantWarnings := []string{
 			"warning 1",
 			"warning 2",
-			"To see the full warning notes, run OpenTF without -compact-warnings.",
+			"To see the full warning notes, run OpenTofu without -compact-warnings.",
 		}
 		for _, want := range wantWarnings {
 			if !strings.Contains(output.Stdout(), want) {
@@ -969,10 +1065,10 @@ foo = "bar"
 const testRefreshStr = `
 test_instance.foo:
   ID = yes
-  provider = provider["registry.terraform.io/hashicorp/test"]
+  provider = provider["registry.opentofu.org/hashicorp/test"]
 `
 const testRefreshCwdStr = `
 test_instance.foo:
   ID = yes
-  provider = provider["registry.terraform.io/hashicorp/test"]
+  provider = provider["registry.opentofu.org/hashicorp/test"]
 `

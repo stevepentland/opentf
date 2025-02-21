@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -8,12 +10,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
 
 	"github.com/mitchellh/cli"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 // UnlockCommand is a cli.Command implementation that manually unlocks
@@ -26,6 +28,7 @@ func (c *UnlockCommand) Run(args []string) int {
 	args = c.Meta.process(args)
 	var force bool
 	cmdFlags := c.Meta.defaultFlagSet("force-unlock")
+	c.Meta.varFlagSet(cmdFlags)
 	cmdFlags.BoolVar(&force, "force", false, "force")
 	cmdFlags.Usage = func() { c.Ui.Error(c.Help()) }
 	if err := cmdFlags.Parse(args); err != nil {
@@ -44,9 +47,16 @@ func (c *UnlockCommand) Run(args []string) int {
 
 	// assume everything is initialized. The user can manually init if this is
 	// required.
-	configPath, err := ModulePath(args)
+	configPath, err := modulePath(args)
 	if err != nil {
 		c.Ui.Error(err.Error())
+		return 1
+	}
+
+	// Load the encryption configuration
+	enc, encDiags := c.EncryptionFromPath(configPath)
+	if encDiags.HasErrors() {
+		c.showDiagnostics(encDiags)
 		return 1
 	}
 
@@ -62,12 +72,15 @@ func (c *UnlockCommand) Run(args []string) int {
 	// Load the backend
 	b, backendDiags := c.Backend(&BackendOpts{
 		Config: backendConfig,
-	})
+	}, enc.State())
 	diags = diags.Append(backendDiags)
 	if backendDiags.HasErrors() {
 		c.showDiagnostics(diags)
 		return 1
 	}
+
+	// unlocking is read only when looking at state data
+	c.ignoreRemoteVersionConflict(b)
 
 	env, err := c.Workspace()
 	if err != nil {
@@ -82,6 +95,15 @@ func (c *UnlockCommand) Run(args []string) int {
 
 	_, isLocal := stateMgr.(*statemgr.Filesystem)
 
+	if optionalLocker, ok := stateMgr.(statemgr.OptionalLocker); ok {
+		// Now we can safely call IsLockingEnabled() on optionalLocker
+		if !optionalLocker.IsLockingEnabled() {
+			c.Ui.Error("Locking is disabled for this backend")
+			return 1
+		}
+	}
+
+	// Proceed with unlocking logic if locking is enabled
 	if !force {
 		// Forcing this doesn't do anything, but doesn't break anything either,
 		// and allows us to run the basic command test too.
@@ -90,11 +112,11 @@ func (c *UnlockCommand) Run(args []string) int {
 			return 1
 		}
 
-		desc := "OpenTF will remove the lock on the remote state.\n" +
-			"This will allow local OpenTF commands to modify this state, even though it\n" +
+		desc := "OpenTofu will remove the lock on the remote state.\n" +
+			"This will allow local OpenTofu commands to modify this state, even though it\n" +
 			"may still be in use. Only 'yes' will be accepted to confirm."
 
-		v, err := c.UIInput().Input(context.Background(), &opentf.InputOpts{
+		v, err := c.UIInput().Input(context.Background(), &tofu.InputOpts{
 			Id:          "force-unlock",
 			Query:       "Do you really want to force-unlock?",
 			Description: desc,
@@ -120,7 +142,7 @@ func (c *UnlockCommand) Run(args []string) int {
 
 func (c *UnlockCommand) Help() string {
 	helpText := `
-Usage: opentf [global options] force-unlock LOCK_ID
+Usage: tofu [global options] force-unlock [options] LOCK_ID
 
   Manually unlock the state for the defined configuration.
 
@@ -132,6 +154,15 @@ Usage: opentf [global options] force-unlock LOCK_ID
 Options:
 
   -force                 Don't ask for input for unlock confirmation.
+
+  -var 'foo=bar'         Set a value for one of the input variables in the root
+                         module of the configuration. Use this option more than
+                         once to set more than one variable.
+
+  -var-file=filename     Load variable values from the given file, in addition
+                         to the default files terraform.tfvars and *.auto.tfvars.
+                         Use this option more than once to include more than one
+                         variables file.
 `
 	return strings.TrimSpace(helpText)
 }
@@ -141,8 +172,8 @@ func (c *UnlockCommand) Synopsis() string {
 }
 
 const outputUnlockSuccess = `
-[reset][bold][green]OpenTF state has been successfully unlocked![reset][green]
+[reset][bold][green]OpenTofu state has been successfully unlocked![reset][green]
 
-The state has been unlocked, and OpenTF commands should now be able to
+The state has been unlocked, and OpenTofu commands should now be able to
 obtain a new lock on the remote state.
 `

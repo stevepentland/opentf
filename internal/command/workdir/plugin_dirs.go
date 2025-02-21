@@ -1,11 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package workdir
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -36,7 +37,7 @@ func (d *Dir) ProviderLocalCacheDir() string {
 // non-empty list with no errors then the result totally replaces the default
 // search directories.
 func (d *Dir) ForcedPluginDirs() ([]string, error) {
-	raw, err := ioutil.ReadFile(filepath.Join(d.dataDir, PluginPathFilename))
+	raw, err := os.ReadFile(filepath.Join(d.dataDir, PluginPathFilename))
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -81,6 +82,6 @@ func (d *Dir) SetForcedPluginDirs(dirs []string) error {
 			return err
 		}
 
-		return ioutil.WriteFile(filePath, raw, 0644)
+		return os.WriteFile(filePath, raw, 0644)
 	}
 }

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package cloud
@@ -13,11 +15,11 @@ import (
 	"strings"
 
 	tfe "github.com/hashicorp/go-tfe"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/command/jsonformat"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 func (b *Cloud) opApply(stopCtx, cancelCtx context.Context, op *backend.Operation, w *tfe.Workspace) (*tfe.Run, error) {
@@ -51,7 +53,7 @@ func (b *Cloud) opApply(stopCtx, cancelCtx context.Context, op *backend.Operatio
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Custom parallelism values are currently not supported",
-			`Terraform Cloud does not support setting a custom parallelism `+
+			`Cloud backend does not support setting a custom parallelism `+
 				`value at this time.`,
 		))
 	}
@@ -60,7 +62,7 @@ func (b *Cloud) opApply(stopCtx, cancelCtx context.Context, op *backend.Operatio
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Applying a saved local plan is not supported",
-			`Terraform Cloud can apply a saved cloud plan, or create a new plan when `+
+			`Cloud backend can apply a saved cloud plan, or create a new plan when `+
 				`configuration is present. It cannot apply a saved local plan.`,
 		))
 	}
@@ -71,8 +73,16 @@ func (b *Cloud) opApply(stopCtx, cancelCtx context.Context, op *backend.Operatio
 			"No configuration files found",
 			`Apply requires configuration to be present. Applying without a configuration `+
 				`would mark everything for destruction, which is normally not what is desired. `+
-				`If you would like to destroy everything, please run 'opentf destroy' which `+
+				`If you would like to destroy everything, please run 'tofu destroy' which `+
 				`does not require any configuration files.`,
+		))
+	}
+
+	if len(op.Excludes) != 0 {
+		diags = diags.Append(tfdiags.Sourceless(
+			tfdiags.Error,
+			"-exclude option is not supported",
+			"The -exclude option is not currently supported for remote plans.",
 		))
 	}
 
@@ -154,15 +164,15 @@ func (b *Cloud) opApply(stopCtx, cancelCtx context.Context, op *backend.Operatio
 		mustConfirm := (op.UIIn != nil && op.UIOut != nil) && !op.AutoApprove
 
 		if mustConfirm && b.input {
-			opts := &opentf.InputOpts{Id: "approve"}
+			opts := &tofu.InputOpts{Id: "approve"}
 
 			if op.PlanMode == plans.DestroyMode {
 				opts.Query = "\nDo you really want to destroy all resources in workspace \"" + op.Workspace + "\"?"
-				opts.Description = "OpenTF will destroy all your managed infrastructure, as shown above.\n" +
+				opts.Description = "OpenTofu will destroy all your managed infrastructure, as shown above.\n" +
 					"There is no undo. Only 'yes' will be accepted to confirm."
 			} else {
 				opts.Query = "\nDo you want to perform these actions in workspace \"" + op.Workspace + "\"?"
-				opts.Description = "OpenTF will perform the actions described above.\n" +
+				opts.Description = "OpenTofu will perform the actions described above.\n" +
 					"Only 'yes' will be accepted to approve."
 			}
 
@@ -174,7 +184,7 @@ func (b *Cloud) opApply(stopCtx, cancelCtx context.Context, op *backend.Operatio
 			return r, errApplyNeedsUIConfirmation
 		} else {
 			// If we don't need to ask for confirmation, insert a blank
-			// line to separate the ouputs.
+			// line to separate the outputs.
 			if b.CLI != nil {
 				b.CLI.Output("")
 			}
@@ -289,16 +299,16 @@ func unusableSavedPlanError(status tfe.RunStatus, url string) error {
 		reason = "The given plan file is already being applied, and cannot be applied again."
 	case tfe.RunCanceled:
 		summary = "Saved plan is canceled"
-		reason = "The given plan file can no longer be applied because the run was canceled via the Terraform Cloud UI or API."
+		reason = "The given plan file can no longer be applied because the run was canceled via the cloud backend UI or API."
 	case tfe.RunDiscarded:
 		summary = "Saved plan is discarded"
-		reason = "The given plan file can no longer be applied; either another run was applied first, or a user discarded it via the Terraform Cloud UI or API."
+		reason = "The given plan file can no longer be applied; either another run was applied first, or a user discarded it via the cloud backend UI or API."
 	case tfe.RunErrored:
 		summary = "Saved plan is errored"
 		reason = "The given plan file refers to a plan that had errors and did not complete successfully. It cannot be applied."
 	case tfe.RunPlannedAndFinished:
 		// Note: planned and finished can also indicate a plan-only run, but
-		// terraform plan can't create a saved plan for a plan-only run, so we
+		// tofu plan can't create a saved plan for a plan-only run, so we
 		// know it's no-changes in this case.
 		summary = "Saved plan has no changes"
 		reason = "The given plan file contains no changes, so it cannot be applied."
@@ -307,7 +317,7 @@ func unusableSavedPlanError(status tfe.RunStatus, url string) error {
 		reason = "The given plan file has soft policy failures, and cannot be applied until a user with appropriate permissions overrides the policy check."
 	default:
 		summary = "Saved plan cannot be applied"
-		reason = "Terraform Cloud cannot apply the given plan file. This may mean the plan and checks have not yet completed, or may indicate another problem."
+		reason = "Cloud backend cannot apply the given plan file. This may mean the plan and checks have not yet completed, or may indicate another problem."
 	}
 
 	diags = diags.Append(tfdiags.Sourceless(
@@ -319,7 +329,7 @@ func unusableSavedPlanError(status tfe.RunStatus, url string) error {
 }
 
 const applyDefaultHeader = `
-[reset][yellow]Running apply in Terraform Cloud. Output will stream here. Pressing Ctrl-C
+[reset][yellow]Running apply in cloud backend. Output will stream here. Pressing Ctrl-C
 will cancel the remote apply if it's still pending. If the apply started it
 will stop streaming the logs, but will not stop the apply running remotely.[reset]
 
@@ -327,7 +337,7 @@ Preparing the remote apply...
 `
 
 const applySavedHeader = `
-[reset][yellow]Running apply in Terraform Cloud. Output will stream here. Pressing Ctrl-C
+[reset][yellow]Running apply in cloud backend. Output will stream here. Pressing Ctrl-C
 will stop streaming the logs, but will not stop the apply running remotely.[reset]
 
 Preparing the remote apply...

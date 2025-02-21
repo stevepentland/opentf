@@ -1,3 +1,8 @@
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package command
 
 import (
@@ -9,9 +14,9 @@ import (
 
 	"github.com/hashicorp/go-plugin"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/cloudplugin"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/cloudplugin/cloudplugin1"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/logging"
+	"github.com/opentofu/opentofu/internal/cloudplugin"
+	"github.com/opentofu/opentofu/internal/cloudplugin/cloudplugin1"
+	"github.com/opentofu/opentofu/internal/logging"
 )
 
 // CloudCommand is a Command implementation that interacts with Terraform
@@ -74,7 +79,7 @@ func (c *CloudCommand) proxy(args []string, stdout, stderr io.Writer) int {
 	// multiple versions are possible.
 	cloud1, ok := raw.(cloudplugin.Cloud1)
 	if !ok {
-		c.Ui.Error("If more than one cloudplugin versions are available, they need to be added to the cloud command. This is a bug in OpenTF.")
+		c.Ui.Error("If more than one cloudplugin versions are available, they need to be added to the cloud command. This is a bug in OpenTofu.")
 		return ExitRPCError
 	}
 	return cloud1.Execute(args, stdout, stderr)
@@ -105,5 +110,5 @@ func (c *CloudCommand) Help() string {
 
 // Synopsis returns a short summary of the cloud command.
 func (c *CloudCommand) Synopsis() string {
-	return "Manage Terraform Cloud settings and metadata"
+	return "Manage cloud backend settings and metadata"
 }

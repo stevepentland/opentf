@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package objchange
@@ -10,9 +12,9 @@ import (
 	"github.com/apparentlymart/go-dump/dump"
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/lang/marks"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/lang/marks"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 func TestAssertObjectCompatible(t *testing.T) {
@@ -1352,7 +1354,7 @@ func TestAssertObjectCompatible(t *testing.T) {
 			}),
 			nil,
 		},
-		// test a set with a patially known dynamic count reducing it's values
+		// test a set with a partially known dynamic count reducing it's values
 		{
 			&configschema.Block{
 				BlockTypes: map[string]*configschema.NestedBlock{

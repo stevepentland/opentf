@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -8,12 +10,13 @@ import (
 	"sort"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 
-	backendLocal "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/local"
+	backendLocal "github.com/opentofu/opentofu/internal/backend/local"
 )
 
 // StateMeta is the meta struct that should be embedded in state subcommands.
@@ -25,17 +28,17 @@ type StateMeta struct {
 // the backend, but changes the way that backups are done. This configures
 // backups to be timestamped rather than just the original state path plus a
 // backup path.
-func (c *StateMeta) State() (statemgr.Full, error) {
+func (c *StateMeta) State(enc encryption.Encryption) (statemgr.Full, error) {
 	var realState statemgr.Full
 	backupPath := c.backupPath
 	stateOutPath := c.statePath
 
 	// use the specified state
 	if c.statePath != "" {
-		realState = statemgr.NewFilesystem(c.statePath)
+		realState = statemgr.NewFilesystem(c.statePath, encryption.StateEncryptionDisabled()) // User specified state file should not be encrypted
 	} else {
 		// Load the backend
-		b, backendDiags := c.Backend(nil)
+		b, backendDiags := c.Backend(nil, enc.State())
 		if backendDiags.HasErrors() {
 			return nil, backendDiags.Err()
 		}
@@ -45,11 +48,11 @@ func (c *StateMeta) State() (statemgr.Full, error) {
 			return nil, err
 		}
 
-		// Check remote Terraform version is compatible
+		// Check remote OpenTofu version is compatible
 		remoteVersionDiags := c.remoteVersionCheck(b, workspace)
 		c.showDiagnostics(remoteVersionDiags)
 		if remoteVersionDiags.HasErrors() {
-			return nil, fmt.Errorf("Error checking remote OpenTF version")
+			return nil, fmt.Errorf("Error checking remote OpenTofu version")
 		}
 
 		// Get the state
@@ -59,16 +62,13 @@ func (c *StateMeta) State() (statemgr.Full, error) {
 		}
 
 		// Get a local backend
-		localRaw, backendDiags := c.Backend(&BackendOpts{ForceLocal: true})
+		localRaw, backendDiags := c.Backend(&BackendOpts{ForceLocal: true}, enc.State())
 		if backendDiags.HasErrors() {
 			// This should never fail
 			panic(backendDiags.Err())
 		}
 		localB := localRaw.(*backendLocal.Local)
 		_, stateOutPath, _ = localB.StatePaths(workspace)
-		if err != nil {
-			return nil, err
-		}
 
 		realState = s
 	}
@@ -128,7 +128,7 @@ func (c *StateMeta) lookupResourceInstanceAddr(state *states.State, allowMissing
 			diags = diags.Append(tfdiags.Sourceless(
 				tfdiags.Error,
 				"Unknown module",
-				fmt.Sprintf(`The current state contains no module at %s. If you've just added this module to the configuration, you must run "opentf apply" first to create the module's entry in the state.`, addr),
+				fmt.Sprintf(`The current state contains no module at %s. If you've just added this module to the configuration, you must run "tofu apply" first to create the module's entry in the state.`, addr),
 			))
 		}
 
@@ -140,7 +140,7 @@ func (c *StateMeta) lookupResourceInstanceAddr(state *states.State, allowMissing
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
 					"Unknown resource",
-					fmt.Sprintf(`The current state contains no resource %s. If you've just added this resource to the configuration, you must run "opentf apply" first to create the resource's entry in the state.`, addr),
+					fmt.Sprintf(`The current state contains no resource %s. If you've just added this resource to the configuration, you must run "tofu apply" first to create the resource's entry in the state.`, addr),
 				))
 			}
 			break
@@ -153,7 +153,7 @@ func (c *StateMeta) lookupResourceInstanceAddr(state *states.State, allowMissing
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
 					"Unknown resource instance",
-					fmt.Sprintf(`The current state contains no resource instance %s. If you've just added its resource to the configuration or have changed the count or for_each arguments, you must run "opentf apply" first to update the resource's entry in the state.`, addr),
+					fmt.Sprintf(`The current state contains no resource instance %s. If you've just added its resource to the configuration or have changed the count or for_each arguments, you must run "tofu apply" first to update the resource's entry in the state.`, addr),
 				))
 			}
 			break

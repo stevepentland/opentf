@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package e2etest
@@ -6,7 +8,7 @@ package e2etest
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -14,21 +16,21 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/e2e"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/grpcwrap"
-	tfplugin5 "github.com/placeholderplaceholderplaceholder/opentf/internal/plugin"
-	tfplugin "github.com/placeholderplaceholderplaceholder/opentf/internal/plugin6"
-	simple5 "github.com/placeholderplaceholderplaceholder/opentf/internal/provider-simple"
-	simple "github.com/placeholderplaceholderplaceholder/opentf/internal/provider-simple-v6"
-	proto5 "github.com/placeholderplaceholderplaceholder/opentf/internal/tfplugin5"
-	proto "github.com/placeholderplaceholderplaceholder/opentf/internal/tfplugin6"
+	"github.com/opentofu/opentofu/internal/e2e"
+	"github.com/opentofu/opentofu/internal/grpcwrap"
+	tfplugin5 "github.com/opentofu/opentofu/internal/plugin"
+	tfplugin "github.com/opentofu/opentofu/internal/plugin6"
+	simple5 "github.com/opentofu/opentofu/internal/provider-simple"
+	simple "github.com/opentofu/opentofu/internal/provider-simple-v6"
+	proto5 "github.com/opentofu/opentofu/internal/tfplugin5"
+	proto "github.com/opentofu/opentofu/internal/tfplugin6"
 )
 
 // The tests in this file are for the "unmanaged provider workflow", which
 // includes variants of the following sequence, with different details:
-// opentf init
-// opentf plan
-// opentf apply
+// tofu init
+// tofu plan
+// tofu apply
 //
 // These tests are run against an in-process server, and checked to make sure
 // they're not trying to control the lifecycle of the binary. They are not
@@ -149,7 +151,7 @@ func TestUnmanagedSeparatePlan(t *testing.T) {
 	t.Parallel()
 
 	fixturePath := filepath.Join("testdata", "test-provider")
-	tf := e2e.NewBinary(t, terraformBin, fixturePath)
+	tf := e2e.NewBinary(t, tofuBin, fixturePath)
 
 	reattachCh := make(chan *plugin.ReattachConfig)
 	closeCh := make(chan struct{})
@@ -162,7 +164,7 @@ func TestUnmanagedSeparatePlan(t *testing.T) {
 		Logger: hclog.New(&hclog.LoggerOptions{
 			Name:   "plugintest",
 			Level:  hclog.Trace,
-			Output: ioutil.Discard,
+			Output: io.Discard,
 		}),
 		Test: &plugin.ServeTestConfig{
 			Context:          ctx,
@@ -212,7 +214,7 @@ func TestUnmanagedSeparatePlan(t *testing.T) {
 	if strings.Contains(stdout, "Installing hashicorp/test v") {
 		t.Errorf("test provider download message is present in init output:\n%s", stdout)
 	}
-	if tf.FileExists(filepath.Join(".terraform", "plugins", "registry.terraform.io", "hashicorp", "test")) {
+	if tf.FileExists(filepath.Join(".terraform", "plugins", "registry.opentofu.org", "hashicorp", "test")) {
 		t.Errorf("test provider binary found in .terraform dir")
 	}
 
@@ -254,7 +256,7 @@ func TestUnmanagedSeparatePlan_proto5(t *testing.T) {
 	t.Parallel()
 
 	fixturePath := filepath.Join("testdata", "test-provider")
-	tf := e2e.NewBinary(t, terraformBin, fixturePath)
+	tf := e2e.NewBinary(t, tofuBin, fixturePath)
 
 	reattachCh := make(chan *plugin.ReattachConfig)
 	closeCh := make(chan struct{})
@@ -267,7 +269,7 @@ func TestUnmanagedSeparatePlan_proto5(t *testing.T) {
 		Logger: hclog.New(&hclog.LoggerOptions{
 			Name:   "plugintest",
 			Level:  hclog.Trace,
-			Output: ioutil.Discard,
+			Output: io.Discard,
 		}),
 		Test: &plugin.ServeTestConfig{
 			Context:          ctx,
@@ -317,7 +319,7 @@ func TestUnmanagedSeparatePlan_proto5(t *testing.T) {
 	if strings.Contains(stdout, "Installing hashicorp/test v") {
 		t.Errorf("test provider download message is present in init output:\n%s", stdout)
 	}
-	if tf.FileExists(filepath.Join(".terraform", "plugins", "registry.terraform.io", "hashicorp", "test")) {
+	if tf.FileExists(filepath.Join(".terraform", "plugins", "registry.opentofu.org", "hashicorp", "test")) {
 		t.Errorf("test provider binary found in .terraform dir")
 	}
 

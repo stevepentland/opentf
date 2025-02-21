@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -9,11 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
+	"github.com/google/go-cmp/cmp"
+
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/terminal"
+	"github.com/opentofu/opentofu/internal/tofu"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -60,21 +64,25 @@ func TestJSONHook_create(t *testing.T) {
 	action, err = hook.PostProvisionInstanceStep(addr, "local-exec", nil)
 	testHookReturnValues(t, action, err)
 
-	// Travel 10s into the future, notify the progress goroutine, and sleep
-	// briefly to allow it to execute
-	nowMu.Lock()
-	now = now.Add(10 * time.Second)
-	after <- now
-	nowMu.Unlock()
-	time.Sleep(1 * time.Millisecond)
+	elapsedChan := hook.applying[addr.String()].elapsed
 
-	// Travel 10s into the future, notify the progress goroutine, and sleep
-	// briefly to allow it to execute
+	// Travel 10s into the future, notify the progress goroutine, and wait
+	// for execution via 'elapsed' progress
 	nowMu.Lock()
 	now = now.Add(10 * time.Second)
 	after <- now
 	nowMu.Unlock()
-	time.Sleep(1 * time.Millisecond)
+	elapsed := <-elapsedChan
+	testDurationEqual(t, 10*time.Second, elapsed)
+
+	// Travel 10s into the future, notify the progress goroutine, and wait
+	// for execution via 'elapsed' progress
+	nowMu.Lock()
+	now = now.Add(10 * time.Second)
+	after <- now
+	nowMu.Unlock()
+	elapsed = <-elapsedChan
+	testDurationEqual(t, 20*time.Second, elapsed)
 
 	// Travel 2s into the future. We have arrived!
 	nowMu.Lock()
@@ -88,6 +96,7 @@ func TestJSONHook_create(t *testing.T) {
 	hook.applyingLock.Lock()
 	for key, progress := range hook.applying {
 		close(progress.done)
+		close(progress.elapsed)
 		<-progress.heartbeatDone
 		delete(hook.applying, key)
 	}
@@ -106,7 +115,7 @@ func TestJSONHook_create(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "test_instance.boop: Creating...",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "apply_start",
 			"hook": map[string]interface{}{
 				"action":   string("create"),
@@ -116,7 +125,7 @@ func TestJSONHook_create(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "test_instance.boop: Provisioning with 'local-exec'...",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "provision_start",
 			"hook": map[string]interface{}{
 				"provisioner": "local-exec",
@@ -126,7 +135,7 @@ func TestJSONHook_create(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": `test_instance.boop: (local-exec): Executing: ["/bin/sh" "-c" "touch /etc/motd"]`,
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "provision_progress",
 			"hook": map[string]interface{}{
 				"output":      `Executing: ["/bin/sh" "-c" "touch /etc/motd"]`,
@@ -137,7 +146,7 @@ func TestJSONHook_create(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "test_instance.boop: (local-exec) Provisioning complete",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "provision_complete",
 			"hook": map[string]interface{}{
 				"provisioner": "local-exec",
@@ -147,7 +156,7 @@ func TestJSONHook_create(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "test_instance.boop: Still creating... [10s elapsed]",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "apply_progress",
 			"hook": map[string]interface{}{
 				"action":          string("create"),
@@ -158,7 +167,7 @@ func TestJSONHook_create(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "test_instance.boop: Still creating... [20s elapsed]",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "apply_progress",
 			"hook": map[string]interface{}{
 				"action":          string("create"),
@@ -169,7 +178,7 @@ func TestJSONHook_create(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "test_instance.boop: Creation complete after 22s [id=test]",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "apply_complete",
 			"hook": map[string]interface{}{
 				"action":          string("create"),
@@ -219,6 +228,7 @@ func TestJSONHook_errors(t *testing.T) {
 	hook.applyingLock.Lock()
 	for key, progress := range hook.applying {
 		close(progress.done)
+		close(progress.elapsed)
 		<-progress.heartbeatDone
 		delete(hook.applying, key)
 	}
@@ -237,7 +247,7 @@ func TestJSONHook_errors(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "test_instance.boop: Destroying...",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "apply_start",
 			"hook": map[string]interface{}{
 				"action":   string("delete"),
@@ -247,7 +257,7 @@ func TestJSONHook_errors(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "test_instance.boop: (local-exec) Provisioning errored",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "provision_errored",
 			"hook": map[string]interface{}{
 				"provisioner": "local-exec",
@@ -257,7 +267,7 @@ func TestJSONHook_errors(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "test_instance.boop: Destruction errored after 0s",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "apply_errored",
 			"hook": map[string]interface{}{
 				"action":          string("delete"),
@@ -305,7 +315,7 @@ func TestJSONHook_refresh(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "data.test_data_source.beep: Refreshing state... [id=honk]",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "refresh_start",
 			"hook": map[string]interface{}{
 				"resource": wantResource,
@@ -316,7 +326,7 @@ func TestJSONHook_refresh(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "data.test_data_source.beep: Refresh complete [id=honk]",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "refresh_complete",
 			"hook": map[string]interface{}{
 				"resource": wantResource,
@@ -329,13 +339,21 @@ func TestJSONHook_refresh(t *testing.T) {
 	testJSONViewOutputEquals(t, done(t).Stdout(), want)
 }
 
-func testHookReturnValues(t *testing.T, action opentf.HookAction, err error) {
+func testHookReturnValues(t *testing.T, action tofu.HookAction, err error) {
 	t.Helper()
 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != opentf.HookActionContinue {
+	if action != tofu.HookActionContinue {
 		t.Fatalf("Expected hook to continue, given: %#v", action)
+	}
+}
+
+func testDurationEqual(t *testing.T, wantedDuration time.Duration, gotDuration time.Duration) {
+	t.Helper()
+
+	if !cmp.Equal(wantedDuration, gotDuration) {
+		t.Errorf("unexpected time elapsed:%s\n", cmp.Diff(wantedDuration, gotDuration))
 	}
 }
