@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package jsonplan
@@ -13,16 +15,16 @@ import (
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonchecks"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonconfig"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonstate"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
-	"github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/command/jsonchecks"
+	"github.com/opentofu/opentofu/internal/command/jsonconfig"
+	"github.com/opentofu/opentofu/internal/command/jsonstate"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/tofu"
+	"github.com/opentofu/opentofu/version"
 )
 
 // FormatVersion represents the version of the json format and will be
@@ -90,6 +92,7 @@ type Change struct {
 	//    ["delete", "create"]
 	//    ["create", "delete"]
 	//    ["delete"]
+	//    ["forget"]
 	// The two "replace" actions are represented in this way to allow callers to
 	// e.g. just scan the list for "delete" to recognize all three situations
 	// where the object will be deleted, allowing for any new deletion
@@ -97,10 +100,11 @@ type Change struct {
 	Actions []string `json:"actions,omitempty"`
 
 	// Before and After are representations of the object value both before and
-	// after the action. For ["create"] and ["delete"] actions, either "before"
-	// or "after" is unset (respectively). For ["no-op"], the before and after
-	// values are identical. The "after" value will be incomplete if there are
-	// values within it that won't be known until after apply.
+	// after the action. For ["delete"] and ["forget"] actions, the "after"
+	// value is unset. For ["create"] the "before" is unset. For ["no-op"], the
+	// before and after values are identical. The "after" value will be
+	// incomplete if there are values within it that won't be known until after
+	// apply.
 	Before json.RawMessage `json:"before,omitempty"`
 	After  json.RawMessage `json:"after,omitempty"`
 
@@ -171,7 +175,7 @@ type Variable struct {
 // the part of the plan required by the jsonformat.Plan renderer.
 func MarshalForRenderer(
 	p *plans.Plan,
-	schemas *opentf.Schemas,
+	schemas *tofu.Schemas,
 ) (map[string]Change, []ResourceChange, []ResourceChange, []ResourceAttr, error) {
 	output := newPlan()
 
@@ -218,7 +222,7 @@ func MarshalForLog(
 	config *configs.Config,
 	p *plans.Plan,
 	sf *statefile.File,
-	schemas *opentf.Schemas,
+	schemas *tofu.Schemas,
 ) (*Plan, error) {
 	output := newPlan()
 	output.TerraformVersion = version.String()
@@ -227,13 +231,13 @@ func MarshalForLog(
 
 	err := output.marshalPlanVariables(p.VariableValues, config.Module.Variables)
 	if err != nil {
-		return nil, fmt.Errorf("error in marshalPlanVariables: %s", err)
+		return nil, fmt.Errorf("error in marshalPlanVariables: %w", err)
 	}
 
 	// output.PlannedValues
 	err = output.marshalPlannedValues(p.Changes, schemas)
 	if err != nil {
-		return nil, fmt.Errorf("error in marshalPlannedValues: %s", err)
+		return nil, fmt.Errorf("error in marshalPlannedValues: %w", err)
 	}
 
 	// output.ResourceDrift
@@ -254,25 +258,25 @@ func MarshalForLog(
 		}
 		output.ResourceDrift, err = MarshalResourceChanges(driftedResources, schemas)
 		if err != nil {
-			return nil, fmt.Errorf("error in marshaling resource drift: %s", err)
+			return nil, fmt.Errorf("error in marshaling resource drift: %w", err)
 		}
 	}
 
 	if err := output.marshalRelevantAttrs(p); err != nil {
-		return nil, fmt.Errorf("error marshaling relevant attributes for external changes: %s", err)
+		return nil, fmt.Errorf("error marshaling relevant attributes for external changes: %w", err)
 	}
 
 	// output.ResourceChanges
 	if p.Changes != nil {
 		output.ResourceChanges, err = MarshalResourceChanges(p.Changes.Resources, schemas)
 		if err != nil {
-			return nil, fmt.Errorf("error in marshaling resource changes: %s", err)
+			return nil, fmt.Errorf("error in marshaling resource changes: %w", err)
 		}
 	}
 
 	// output.OutputChanges
 	if output.OutputChanges, err = MarshalOutputChanges(p.Changes); err != nil {
-		return nil, fmt.Errorf("error in marshaling output changes: %s", err)
+		return nil, fmt.Errorf("error in marshaling output changes: %w", err)
 	}
 
 	// output.Checks
@@ -284,25 +288,25 @@ func MarshalForLog(
 	if sf != nil && !sf.State.Empty() {
 		output.PriorState, err = jsonstate.Marshal(sf, schemas)
 		if err != nil {
-			return nil, fmt.Errorf("error marshaling prior state: %s", err)
+			return nil, fmt.Errorf("error marshaling prior state: %w", err)
 		}
 	}
 
 	// output.Config
 	output.Config, err = jsonconfig.Marshal(config, schemas)
 	if err != nil {
-		return nil, fmt.Errorf("error marshaling config: %s", err)
+		return nil, fmt.Errorf("error marshaling config: %w", err)
 	}
 
 	return output, nil
 }
 
-// Marshal returns the json encoding of a terraform plan.
+// Marshal returns the json encoding of a tofu plan.
 func Marshal(
 	config *configs.Config,
 	p *plans.Plan,
 	sf *statefile.File,
-	schemas *opentf.Schemas,
+	schemas *tofu.Schemas,
 ) ([]byte, error) {
 	output, err := MarshalForLog(config, p, sf, schemas)
 	if err != nil {
@@ -372,7 +376,7 @@ func (p *Plan) marshalPlanVariables(vars map[string]plans.DynamicValue, decls ma
 // This function is referenced directly from the structured renderer tests, to
 // ensure parity between the renderers. It probably shouldn't be used anywhere
 // else.
-func MarshalResourceChanges(resources []*plans.ResourceInstanceChangeSrc, schemas *opentf.Schemas) ([]ResourceChange, error) {
+func MarshalResourceChanges(resources []*plans.ResourceInstanceChangeSrc, schemas *tofu.Schemas) ([]ResourceChange, error) {
 	var ret []ResourceChange
 
 	var sortedResources []*plans.ResourceInstanceChangeSrc
@@ -431,7 +435,7 @@ func MarshalResourceChanges(resources []*plans.ResourceInstanceChangeSrc, schema
 			if schema.ContainsSensitive() {
 				marks = append(marks, schema.ValueMarks(changeV.Before, nil)...)
 			}
-			bs := jsonstate.SensitiveAsBool(changeV.Before.MarkWithPaths(marks))
+			bs := jsonstate.SensitiveAsBoolWithPathValueMarks(changeV.Before, marks)
 			beforeSensitive, err = ctyjson.Marshal(bs, bs.Type())
 			if err != nil {
 				return nil, err
@@ -460,7 +464,7 @@ func MarshalResourceChanges(resources []*plans.ResourceInstanceChangeSrc, schema
 			if schema.ContainsSensitive() {
 				marks = append(marks, schema.ValueMarks(changeV.After, nil)...)
 			}
-			as := jsonstate.SensitiveAsBool(changeV.After.MarkWithPaths(marks))
+			as := jsonstate.SensitiveAsBoolWithPathValueMarks(changeV.After, marks)
 			afterSensitive, err = ctyjson.Marshal(as, as.Type())
 			if err != nil {
 				return nil, err
@@ -654,7 +658,7 @@ func MarshalOutputChanges(changes *plans.Changes) (map[string]Change, error) {
 	return outputChanges, nil
 }
 
-func (p *Plan) marshalPlannedValues(changes *plans.Changes, schemas *opentf.Schemas) error {
+func (p *Plan) marshalPlannedValues(changes *plans.Changes, schemas *tofu.Schemas) error {
 	// marshal the planned changes into a module
 	plan, err := marshalPlannedValues(changes, schemas)
 	if err != nil {
@@ -682,6 +686,13 @@ func (p *Plan) marshalRelevantAttrs(plan *plans.Plan) error {
 
 		p.RelevantAttributes = append(p.RelevantAttributes, ResourceAttr{addr, path})
 	}
+
+	// We sort the relevant attributes by resource address to make the output
+	// deterministic. Our own equivalence tests rely on it.
+	sort.Slice(p.RelevantAttributes, func(i, j int) bool {
+		return p.RelevantAttributes[i].Resource < p.RelevantAttributes[j].Resource
+	})
+
 	return nil
 }
 
@@ -832,6 +843,8 @@ func actionString(action string) []string {
 		return []string{"read"}
 	case action == "DeleteThenCreate":
 		return []string{"delete", "create"}
+	case action == "Forget":
+		return []string{"forget"}
 	default:
 		return []string{action}
 	}
@@ -861,6 +874,8 @@ func UnmarshalActions(actions []string) plans.Action {
 			return plans.Read
 		case "no-op":
 			return plans.NoOp
+		case "forget":
+			return plans.Forget
 		}
 	}
 
@@ -878,7 +893,7 @@ func UnmarshalActions(actions []string) plans.Action {
 // indexes.
 //
 // JavaScript (or similar dynamic language) consumers of these values can
-// iterate over the the steps starting from the root object to reach the
+// iterate over the steps starting from the root object to reach the
 // value that each path is describing.
 func encodePaths(pathSet cty.PathSet) (json.RawMessage, error) {
 	if pathSet.Empty() {
@@ -906,13 +921,13 @@ func encodePath(path cty.Path) (json.RawMessage, error) {
 		case cty.IndexStep:
 			key, err := ctyjson.Marshal(s.Key, s.Key.Type())
 			if err != nil {
-				return nil, fmt.Errorf("Failed to marshal index step key %#v: %s", s.Key, err)
+				return nil, fmt.Errorf("Failed to marshal index step key %#v: %w", s.Key, err)
 			}
 			steps = append(steps, key)
 		case cty.GetAttrStep:
 			name, err := json.Marshal(s.Name)
 			if err != nil {
-				return nil, fmt.Errorf("Failed to marshal get attr step name %#v: %s", s.Name, err)
+				return nil, fmt.Errorf("Failed to marshal get attr step name %#v: %w", s.Name, err)
 			}
 			steps = append(steps, name)
 		default:

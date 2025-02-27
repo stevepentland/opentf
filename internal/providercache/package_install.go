@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package providercache
@@ -6,16 +8,19 @@ package providercache
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	getter "github.com/hashicorp/go-getter"
+	"github.com/hashicorp/go-retryablehttp"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/copy"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/getproviders"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/httpclient"
+	"github.com/opentofu/opentofu/internal/copy"
+	"github.com/opentofu/opentofu/internal/getproviders"
+	"github.com/opentofu/opentofu/internal/httpclient"
+	"github.com/opentofu/opentofu/internal/logging"
 )
 
 // We borrow the "unpack a zip file into a target directory" logic from
@@ -24,6 +29,39 @@ import (
 // providers _always_ come from provider registries, which have a very
 // specific protocol and set of expectations.)
 var unzip = getter.ZipDecompressor{}
+
+const (
+	// httpClientRetryCountEnvName is the environment variable name used to customize
+	// the HTTP retry count for module downloads.
+	httpClientRetryCountEnvName = "TF_PROVIDER_DOWNLOAD_RETRY"
+
+	defaultRetry = 2
+)
+
+func init() {
+	configureProviderDownloadRetry()
+}
+
+var (
+	maxRetryCount int
+)
+
+// will attempt for requests with retryable errors, like 502 status codes
+func configureProviderDownloadRetry() {
+	maxRetryCount = defaultRetry
+	if v := os.Getenv(httpClientRetryCountEnvName); v != "" {
+		retry, err := strconv.Atoi(v)
+		if err == nil && retry > 0 {
+			maxRetryCount = retry
+		}
+	}
+}
+
+func requestLogHook(logger retryablehttp.Logger, req *http.Request, i int) {
+	if i > 0 {
+		logger.Printf("[INFO] Previous request to the provider install failed, attempting retry.")
+	}
+}
 
 func installFromHTTPURL(ctx context.Context, meta getproviders.PackageMeta, targetDir string, allowedHashes []getproviders.Hash) (*getproviders.PackageAuthenticationResult, error) {
 	url := meta.Location.String()
@@ -36,19 +74,24 @@ func installFromHTTPURL(ctx context.Context, meta getproviders.PackageMeta, targ
 	// through X-Terraform-Get header, attempting partial fetches for
 	// files that already exist, etc.)
 
-	httpClient := httpclient.New()
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	retryableClient := retryablehttp.NewClient()
+	retryableClient.HTTPClient = httpclient.New()
+	retryableClient.RetryMax = maxRetryCount
+	retryableClient.RequestLogHook = requestLogHook
+	retryableClient.Logger = log.New(logging.LogOutput(), "", log.Flags())
+
+	req, err := retryablehttp.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("invalid provider download request: %s", err)
+		return nil, fmt.Errorf("invalid provider download request: %w", err)
 	}
-	resp, err := httpClient.Do(req)
+	resp, err := retryableClient.Do(req)
 	if err != nil {
 		if ctx.Err() == context.Canceled {
 			// "context canceled" is not a user-friendly error message,
 			// so we'll return a more appropriate one here.
 			return nil, fmt.Errorf("provider download was interrupted")
 		}
-		return nil, fmt.Errorf("%s: %w", getproviders.HostFromRequest(req), err)
+		return nil, fmt.Errorf("%s: %w", getproviders.HostFromRequest(req.Request), err)
 	}
 	defer resp.Body.Close()
 
@@ -56,7 +99,7 @@ func installFromHTTPURL(ctx context.Context, meta getproviders.PackageMeta, targ
 		return nil, fmt.Errorf("unsuccessful request to %s: %s", url, resp.Status)
 	}
 
-	f, err := ioutil.TempFile("", "terraform-provider")
+	f, err := os.CreateTemp("", "terraform-provider")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open temporary file to download from %s: %w", url, err)
 	}
@@ -115,12 +158,12 @@ func installFromLocalArchive(ctx context.Context, meta getproviders.PackageMeta,
 	if len(allowedHashes) > 0 {
 		if matches, err := meta.MatchesAnyHash(allowedHashes); err != nil {
 			return authResult, fmt.Errorf(
-				"failed to calculate checksum for %s %s package at %s: %s",
+				"failed to calculate checksum for %s %s package at %s: %w",
 				meta.Provider, meta.Version, meta.Location, err,
 			)
 		} else if !matches {
 			return authResult, fmt.Errorf(
-				"the current package for %s %s doesn't match any of the checksums previously recorded in the dependency lock file; for more information: https://www.placeholderplaceholderplaceholder.io/language/provider-checksum-verification",
+				"the current package for %s %s doesn't match any of the checksums previously recorded in the dependency lock file; for more information: https://opentofu.org/docs/language/files/dependency-lock/#checksum-verification",
 				meta.Provider, meta.Version,
 			)
 		}
@@ -153,11 +196,11 @@ func installFromLocalDir(ctx context.Context, meta getproviders.PackageMeta, tar
 
 	absNew, err := filepath.Abs(targetDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make target path %s absolute: %s", targetDir, err)
+		return nil, fmt.Errorf("failed to make target path %s absolute: %w", targetDir, err)
 	}
 	absCurrent, err := filepath.Abs(sourceDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make source path %s absolute: %s", sourceDir, err)
+		return nil, fmt.Errorf("failed to make source path %s absolute: %w", sourceDir, err)
 	}
 
 	// Before we do anything else, we'll do a quick check to make sure that
@@ -167,7 +210,7 @@ func installFromLocalDir(ctx context.Context, meta getproviders.PackageMeta, tar
 	if same, err := copy.SameFile(absNew, absCurrent); same {
 		return nil, fmt.Errorf("cannot install existing provider directory %s to itself", targetDir)
 	} else if err != nil {
-		return nil, fmt.Errorf("failed to determine if %s and %s are the same: %s", sourceDir, targetDir, err)
+		return nil, fmt.Errorf("failed to determine if %s and %s are the same: %w", sourceDir, targetDir, err)
 	}
 
 	var authResult *getproviders.PackageAuthenticationResult
@@ -205,12 +248,12 @@ func installFromLocalDir(ctx context.Context, meta getproviders.PackageMeta, tar
 	if suitableHashCount > 0 {
 		if matches, err := meta.MatchesAnyHash(allowedHashes); err != nil {
 			return authResult, fmt.Errorf(
-				"failed to calculate checksum for %s %s package at %s: %s",
+				"failed to calculate checksum for %s %s package at %s: %w",
 				meta.Provider, meta.Version, meta.Location, err,
 			)
 		} else if !matches {
 			return authResult, fmt.Errorf(
-				"the local package for %s %s doesn't match any of the checksums previously recorded in the dependency lock file (this might be because the available checksums are for packages targeting different platforms); for more information: https://www.placeholderplaceholderplaceholder.io/language/provider-checksum-verification",
+				"the local package for %s %s doesn't match any of the checksums previously recorded in the dependency lock file (this might be because the available checksums are for packages targeting different platforms); for more information: https://opentofu.org/docs/language/files/dependency-lock/#checksum-verification",
 				meta.Provider, meta.Version,
 			)
 		}
@@ -219,7 +262,7 @@ func installFromLocalDir(ctx context.Context, meta getproviders.PackageMeta, tar
 	// Delete anything that's already present at this path first.
 	err = os.RemoveAll(targetDir)
 	if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("failed to remove existing %s before linking it to %s: %s", sourceDir, targetDir, err)
+		return nil, fmt.Errorf("failed to remove existing %s before linking it to %s: %w", sourceDir, targetDir, err)
 	}
 
 	// We'll prefer to create a symlink if possible, but we'll fall back to
@@ -238,7 +281,7 @@ func installFromLocalDir(ctx context.Context, meta getproviders.PackageMeta, tar
 	parentDir := filepath.Dir(absNew)
 	err = os.MkdirAll(parentDir, 0755)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create parent directories leading to %s: %s", targetDir, err)
+		return nil, fmt.Errorf("failed to create parent directories leading to %s: %w", targetDir, err)
 	}
 
 	err = os.Symlink(linkTarget, absNew)
@@ -252,11 +295,11 @@ func installFromLocalDir(ctx context.Context, meta getproviders.PackageMeta, tar
 	// which would otherwise be a symlink.
 	err = os.Mkdir(absNew, 0755)
 	if err != nil && os.IsExist(err) {
-		return nil, fmt.Errorf("failed to create directory %s: %s", absNew, err)
+		return nil, fmt.Errorf("failed to create directory %s: %w", absNew, err)
 	}
 	err = copy.CopyDir(absNew, absCurrent)
 	if err != nil {
-		return nil, fmt.Errorf("failed to either symlink or copy %s to %s: %s", absCurrent, absNew, err)
+		return nil, fmt.Errorf("failed to either symlink or copy %s to %s: %w", absCurrent, absNew, err)
 	}
 
 	// If we got here then apparently our copy succeeded, so we're done.

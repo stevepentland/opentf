@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -12,12 +14,12 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/format"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views/json"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/command/format"
+	"github.com/opentofu/opentofu/internal/command/views/json"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 // How long to wait between sending heartbeat/progress messages
@@ -33,21 +35,21 @@ func newJSONHook(view *JSONView) *jsonHook {
 }
 
 type jsonHook struct {
-	opentf.NilHook
+	tofu.NilHook
 
 	view *JSONView
 
+	applyingLock sync.Mutex
 	// Concurrent map of resource addresses to allow the sequence of pre-apply,
 	// progress, and post-apply messages to share data about the resource
-	applying     map[string]applyProgress
-	applyingLock sync.Mutex
+	applying map[string]applyProgress
 
 	// Mockable functions for testing the progress timer goroutine
 	timeNow   func() time.Time
 	timeAfter func(time.Duration) <-chan time.Time
 }
 
-var _ opentf.Hook = (*jsonHook)(nil)
+var _ tofu.Hook = (*jsonHook)(nil)
 
 type applyProgress struct {
 	addr   addrs.AbsResourceInstance
@@ -60,9 +62,12 @@ type applyProgress struct {
 	// heartbeatDone is used to allow tests to safely wait for the progress
 	// goroutine to finish
 	heartbeatDone chan struct{}
+
+	// elapsed is used to allow tests to safely check for heartbeat executions
+	elapsed chan time.Duration
 }
 
-func (h *jsonHook) PreApply(addr addrs.AbsResourceInstance, gen states.Generation, action plans.Action, priorState, plannedNewState cty.Value) (opentf.HookAction, error) {
+func (h *jsonHook) PreApply(addr addrs.AbsResourceInstance, gen states.Generation, action plans.Action, priorState, plannedNewState cty.Value) (tofu.HookAction, error) {
 	if action != plans.NoOp {
 		idKey, idValue := format.ObjectValueIDOrName(priorState)
 		h.view.Hook(json.NewApplyStart(addr, action, idKey, idValue))
@@ -72,6 +77,7 @@ func (h *jsonHook) PreApply(addr addrs.AbsResourceInstance, gen states.Generatio
 		addr:          addr,
 		action:        action,
 		start:         h.timeNow().Round(time.Second),
+		elapsed:       make(chan time.Duration),
 		done:          make(chan struct{}),
 		heartbeatDone: make(chan struct{}),
 	}
@@ -82,11 +88,12 @@ func (h *jsonHook) PreApply(addr addrs.AbsResourceInstance, gen states.Generatio
 	if action != plans.NoOp {
 		go h.applyingHeartbeat(progress)
 	}
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
 func (h *jsonHook) applyingHeartbeat(progress applyProgress) {
 	defer close(progress.heartbeatDone)
+	defer close(progress.elapsed)
 	for {
 		select {
 		case <-progress.done:
@@ -96,10 +103,11 @@ func (h *jsonHook) applyingHeartbeat(progress applyProgress) {
 
 		elapsed := h.timeNow().Round(time.Second).Sub(progress.start)
 		h.view.Hook(json.NewApplyProgress(progress.addr, progress.action, elapsed))
+		progress.elapsed <- elapsed
 	}
 }
 
-func (h *jsonHook) PostApply(addr addrs.AbsResourceInstance, gen states.Generation, newState cty.Value, err error) (opentf.HookAction, error) {
+func (h *jsonHook) PostApply(addr addrs.AbsResourceInstance, gen states.Generation, newState cty.Value, err error) (tofu.HookAction, error) {
 	key := addr.String()
 	h.applyingLock.Lock()
 	progress := h.applying[key]
@@ -110,7 +118,7 @@ func (h *jsonHook) PostApply(addr addrs.AbsResourceInstance, gen states.Generati
 	h.applyingLock.Unlock()
 
 	if progress.action == plans.NoOp {
-		return opentf.HookActionContinue, nil
+		return tofu.HookActionContinue, nil
 	}
 
 	elapsed := h.timeNow().Round(time.Second).Sub(progress.start)
@@ -124,15 +132,15 @@ func (h *jsonHook) PostApply(addr addrs.AbsResourceInstance, gen states.Generati
 		idKey, idValue := format.ObjectValueID(newState)
 		h.view.Hook(json.NewApplyComplete(addr, progress.action, idKey, idValue, elapsed))
 	}
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
-func (h *jsonHook) PreProvisionInstanceStep(addr addrs.AbsResourceInstance, typeName string) (opentf.HookAction, error) {
+func (h *jsonHook) PreProvisionInstanceStep(addr addrs.AbsResourceInstance, typeName string) (tofu.HookAction, error) {
 	h.view.Hook(json.NewProvisionStart(addr, typeName))
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
-func (h *jsonHook) PostProvisionInstanceStep(addr addrs.AbsResourceInstance, typeName string, err error) (opentf.HookAction, error) {
+func (h *jsonHook) PostProvisionInstanceStep(addr addrs.AbsResourceInstance, typeName string, err error) (tofu.HookAction, error) {
 	if err != nil {
 		// Errors are collected and displayed post-apply, so no need to
 		// re-render them here. Instead just signal that this provisioner step
@@ -141,7 +149,7 @@ func (h *jsonHook) PostProvisionInstanceStep(addr addrs.AbsResourceInstance, typ
 	} else {
 		h.view.Hook(json.NewProvisionComplete(addr, typeName))
 	}
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
 func (h *jsonHook) ProvisionOutput(addr addrs.AbsResourceInstance, typeName string, msg string) {
@@ -155,14 +163,14 @@ func (h *jsonHook) ProvisionOutput(addr addrs.AbsResourceInstance, typeName stri
 	}
 }
 
-func (h *jsonHook) PreRefresh(addr addrs.AbsResourceInstance, gen states.Generation, priorState cty.Value) (opentf.HookAction, error) {
+func (h *jsonHook) PreRefresh(addr addrs.AbsResourceInstance, gen states.Generation, priorState cty.Value) (tofu.HookAction, error) {
 	idKey, idValue := format.ObjectValueID(priorState)
 	h.view.Hook(json.NewRefreshStart(addr, idKey, idValue))
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
-func (h *jsonHook) PostRefresh(addr addrs.AbsResourceInstance, gen states.Generation, priorState cty.Value, newState cty.Value) (opentf.HookAction, error) {
+func (h *jsonHook) PostRefresh(addr addrs.AbsResourceInstance, gen states.Generation, priorState cty.Value, newState cty.Value) (tofu.HookAction, error) {
 	idKey, idValue := format.ObjectValueID(newState)
 	h.view.Hook(json.NewRefreshComplete(addr, idKey, idValue))
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }

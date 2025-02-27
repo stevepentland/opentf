@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package main
@@ -14,7 +16,7 @@ import (
 	tfe "github.com/hashicorp/go-tfe"
 	"github.com/hashicorp/go-uuid"
 	goversion "github.com/hashicorp/go-version"
-	tfversion "github.com/placeholderplaceholderplaceholder/opentf/version"
+	tfversion "github.com/opentofu/opentofu/version"
 )
 
 const (
@@ -259,7 +261,7 @@ func skipWithoutRemoteTerraformVersion(t *testing.T) {
 	version := tfversion.Version
 	baseVersion, err := goversion.NewVersion(version)
 	if err != nil {
-		t.Fatalf(fmt.Sprintf("Error instantiating go-version for %s", version))
+		t.Fatalf("Error instantiating go-version for %s", version)
 	}
 	opts := &tfe.AdminTerraformVersionsListOptions{
 		ListOptions: tfe.ListOptions{
@@ -271,7 +273,7 @@ func skipWithoutRemoteTerraformVersion(t *testing.T) {
 
 findTfVersion:
 	for {
-		// TODO: update go-tfe Read() to retrieve a terraform version by name.
+		// TODO: update go-tfe Read() to retrieve a tofu version by name.
 		// Currently you can only retrieve by ID.
 		tfVersionList, err := tfeClient.Admin.TerraformVersions.List(context.Background(), opts)
 		if err != nil {

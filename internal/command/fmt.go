@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -7,7 +9,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -19,8 +20,8 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/mitchellh/cli"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 const (
@@ -30,12 +31,14 @@ const (
 var (
 	fmtSupportedExts = []string{
 		".tf",
+		".tofu",
 		".tfvars",
 		".tftest.hcl",
+		".tofutest.hcl",
 	}
 )
 
-// FmtCommand is a Command implementation that rewrites Terraform config
+// FmtCommand is a Command implementation that rewrites OpenTofu config
 // files to a canonical format and style.
 type FmtCommand struct {
 	Meta
@@ -159,7 +162,7 @@ func (c *FmtCommand) fmt(paths []string, stdin io.Reader, stdout io.Writer) tfdi
 			}
 
 			if !fmtd {
-				diags = diags.Append(fmt.Errorf("Only .tf, .tfvars, and .tftest.hcl files can be processed with opentf fmt"))
+				diags = diags.Append(fmt.Errorf("Only .tf, .tfvars, and .tftest.hcl files can be processed with tofu fmt"))
 				continue
 			}
 		}
@@ -171,9 +174,9 @@ func (c *FmtCommand) fmt(paths []string, stdin io.Reader, stdout io.Writer) tfdi
 func (c *FmtCommand) processFile(path string, r io.Reader, w io.Writer, isStdout bool) tfdiags.Diagnostics {
 	var diags tfdiags.Diagnostics
 
-	log.Printf("[TRACE] opentf fmt: Formatting %s", path)
+	log.Printf("[TRACE] tofu fmt: Formatting %s", path)
 
-	src, err := ioutil.ReadAll(r)
+	src, err := io.ReadAll(r)
 	if err != nil {
 		diags = diags.Append(fmt.Errorf("Failed to read %s", path))
 		return diags
@@ -200,7 +203,7 @@ func (c *FmtCommand) processFile(path string, r io.Reader, w io.Writer, isStdout
 			fmt.Fprintln(w, path)
 		}
 		if c.write {
-			err := ioutil.WriteFile(path, result, 0644)
+			err := os.WriteFile(path, result, 0644)
 			if err != nil {
 				diags = diags.Append(fmt.Errorf("Failed to write %s", path))
 				return diags
@@ -209,7 +212,7 @@ func (c *FmtCommand) processFile(path string, r io.Reader, w io.Writer, isStdout
 		if c.diff {
 			diff, err := bytesDiff(src, result, path)
 			if err != nil {
-				diags = diags.Append(fmt.Errorf("Failed to generate diff for %s: %s", path, err))
+				diags = diags.Append(fmt.Errorf("Failed to generate diff for %s: %w", path, err))
 				return diags
 			}
 			w.Write(diff)
@@ -229,9 +232,9 @@ func (c *FmtCommand) processFile(path string, r io.Reader, w io.Writer, isStdout
 func (c *FmtCommand) processDir(path string, stdout io.Writer) tfdiags.Diagnostics {
 	var diags tfdiags.Diagnostics
 
-	log.Printf("[TRACE] opentf fmt: looking for files in %s", path)
+	log.Printf("[TRACE] tofu fmt: looking for files in %s", path)
 
-	entries, err := ioutil.ReadDir(path)
+	entries, err := os.ReadDir(path)
 	if err != nil {
 		switch {
 		case os.IsNotExist(err):
@@ -257,7 +260,7 @@ func (c *FmtCommand) processDir(path string, stdout io.Writer) tfdiags.Diagnosti
 			}
 
 			// We do not recurse into child directories by default because we
-			// want to mimic the file-reading behavior of "terraform plan", etc,
+			// want to mimic the file-reading behavior of "tofu plan", etc,
 			// operating on one module at a time.
 			continue
 		}
@@ -469,7 +472,7 @@ func (c *FmtCommand) formatTypeExpr(tokens hclwrite.Tokens) hclwrite.Tokens {
 		// element type, we use string as the default element
 		// type. That will avoid oddities if somehow the configuration
 		// was relying on numeric values being auto-converted to
-		// string, as 0.11 would do. This mimicks what terraform
+		// string, as 0.11 would do. This mimics what terraform
 		// 0.12upgrade used to do, because we'd found real-world
 		// modules that were depending on the auto-stringing.)
 		switch string(strTok.Bytes) {
@@ -547,9 +550,9 @@ func (c *FmtCommand) trimNewlines(tokens hclwrite.Tokens) hclwrite.Tokens {
 
 func (c *FmtCommand) Help() string {
 	helpText := `
-Usage: opentf [global options] fmt [options] [target...]
+Usage: tofu [global options] fmt [options] [target...]
 
-  Rewrites all OpenTF configuration files to a canonical format. All
+  Rewrites all OpenTofu configuration files to a canonical format. All
   configuration files (.tf), variables files (.tfvars), and testing files 
   (.tftest.hcl) are updated. JSON files (.tf.json, .tfvars.json, or 
   .tftest.json) are not modified.
@@ -560,7 +563,7 @@ Usage: opentf [global options] fmt [options] [target...]
   file. If you provide a single dash ("-"), then fmt will read from standard
   input (STDIN).
 
-  The content must be in the OpenTF language native syntax; JSON is not
+  The content must be in the OpenTofu language native syntax; JSON is not
   supported.
 
 Options:
@@ -589,14 +592,14 @@ func (c *FmtCommand) Synopsis() string {
 }
 
 func bytesDiff(b1, b2 []byte, path string) (data []byte, err error) {
-	f1, err := ioutil.TempFile("", "")
+	f1, err := os.CreateTemp("", "")
 	if err != nil {
 		return
 	}
 	defer os.Remove(f1.Name())
 	defer f1.Close()
 
-	f2, err := ioutil.TempFile("", "")
+	f2, err := os.CreateTemp("", "")
 	if err != nil {
 		return
 	}

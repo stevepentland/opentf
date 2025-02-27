@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package states
@@ -6,7 +8,7 @@ package states
 import (
 	"reflect"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 )
 
 // Equal returns true if the receiver is functionally equivalent to other,
@@ -23,7 +25,7 @@ func (s *State) Equal(other *State) bool {
 }
 
 // ManagedResourcesEqual returns true if all of the managed resources tracked
-// in the reciever are functionally equivalent to the same tracked in the
+// in the receiver are functionally equivalent to the same tracked in the
 // other given state.
 //
 // This is a more constrained version of Equal that disregards other

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package winrm
@@ -10,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/communicator/shared"
+	"github.com/opentofu/opentofu/internal/communicator/shared"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
 )
@@ -51,7 +53,7 @@ type connectionInfo struct {
 }
 
 // decodeConnInfo decodes the given cty.Value using the same behavior as the
-// lgeacy mapstructure decoder in order to preserve as much of the existing
+// legacy mapstructure decoder in order to preserve as much of the existing
 // logic as possible for compatibility.
 func decodeConnInfo(v cty.Value) (*connectionInfo, error) {
 	connInfo := &connectionInfo{}

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package marks
@@ -36,7 +38,7 @@ func Contains(val cty.Value, mark valueMark) bool {
 }
 
 // Sensitive indicates that this value is marked as sensitive in the context of
-// OpenTF.
+// OpenTofu.
 const Sensitive = valueMark("Sensitive")
 
 // TypeType is used to indicate that the value contains a representation of

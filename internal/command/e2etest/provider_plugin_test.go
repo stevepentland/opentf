@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package e2etest
@@ -9,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/e2e"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/getproviders"
+	"github.com/opentofu/opentofu/internal/e2e"
+	"github.com/opentofu/opentofu/internal/getproviders"
 )
 
-// TestProviderProtocols verifies that Terraform can execute provider plugins
+// TestProviderProtocols verifies that OpenTofu can execute provider plugins
 // with both supported protocol versions.
 func TestProviderProtocols(t *testing.T) {
 	if !canRunGoBuild {
@@ -26,22 +28,22 @@ func TestProviderProtocols(t *testing.T) {
 	}
 	t.Parallel()
 
-	tf := e2e.NewBinary(t, terraformBin, "testdata/provider-plugin")
+	tf := e2e.NewBinary(t, tofuBin, "testdata/provider-plugin")
 
 	// In order to do a decent end-to-end test for this case we will need a real
 	// enough provider plugin to try to run and make sure we are able to
 	// actually run it. Here will build the simple and simple6 (built with
 	// protocol v6) providers.
 	simple6Provider := filepath.Join(tf.WorkDir(), "terraform-provider-simple6")
-	simple6ProviderExe := e2e.GoBuild("github.com/placeholderplaceholderplaceholder/opentf/internal/provider-simple-v6/main", simple6Provider)
+	simple6ProviderExe := e2e.GoBuild("github.com/opentofu/opentofu/internal/provider-simple-v6/main", simple6Provider)
 
 	simpleProvider := filepath.Join(tf.WorkDir(), "terraform-provider-simple")
-	simpleProviderExe := e2e.GoBuild("github.com/placeholderplaceholderplaceholder/opentf/internal/provider-simple/main", simpleProvider)
+	simpleProviderExe := e2e.GoBuild("github.com/opentofu/opentofu/internal/provider-simple/main", simpleProvider)
 
-	// Move the provider binaries into a directory that we will point opentf
+	// Move the provider binaries into a directory that we will point tofu
 	// to using the -plugin-dir cli flag.
 	platform := getproviders.CurrentPlatform.String()
-	hashiDir := "cache/registry.terraform.io/hashicorp/"
+	hashiDir := "cache/registry.opentofu.org/hashicorp/"
 	if err := os.MkdirAll(tf.Path(hashiDir, "simple6/0.0.1/", platform), os.ModePerm); err != nil {
 		t.Fatal(err)
 	}

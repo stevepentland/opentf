@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package schema
@@ -34,7 +36,7 @@ func (r *MultiLevelFieldReader) ReadFieldExact(
 	result, err := reader.ReadField(address)
 	if err != nil {
 		return FieldReadResult{}, fmt.Errorf(
-			"Error reading level %s: %s", level, err)
+			"Error reading level %s: %w", level, err)
 	}
 
 	return result, nil
@@ -48,7 +50,7 @@ func (r *MultiLevelFieldReader) ReadFieldMerge(
 			out, err := r.ReadField(address)
 			if err != nil {
 				return FieldReadResult{}, fmt.Errorf(
-					"Error reading level %s: %s", l, err)
+					"Error reading level %s: %w", l, err)
 			}
 
 			// TODO: computed

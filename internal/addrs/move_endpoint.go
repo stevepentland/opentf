@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package addrs
@@ -7,7 +9,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 // MoveEndpoint is to AbsMoveable and ConfigMoveable what Target is to
@@ -18,8 +20,8 @@ import (
 // Its name reflects that its primary purpose is for the "from" and "to"
 // addresses in a "moved" statement in the configuration, but it's also
 // valid to use MoveEndpoint for other similar mechanisms that give
-// OpenTF hints about historical configuration changes that might
-// prompt creating a different plan than OpenTF would by default.
+// OpenTofu hints about historical configuration changes that might
+// prompt creating a different plan than OpenTofu would by default.
 //
 // To obtain a full address from a MoveEndpoint you must use
 // either the package function UnifyMoveEndpoints (to get an AbsMoveable) or
@@ -27,11 +29,11 @@ import (
 type MoveEndpoint struct {
 	// SourceRange is the location of the physical endpoint address
 	// in configuration, if this MoveEndpoint was decoded from a
-	// configuration expresson.
+	// configuration expression.
 	SourceRange tfdiags.SourceRange
 
 	// Internally we (ab)use AbsMoveable as the representation of our
-	// relative address, even though everywhere else in OpenTF
+	// relative address, even though everywhere else in OpenTofu
 	// AbsMoveable always represents a fully-absolute address.
 	// In practice, due to the implementation of ParseMoveEndpoint,
 	// this is always either a ModuleInstance or an AbsResourceInstance,
@@ -70,7 +72,7 @@ func (e *MoveEndpoint) Equal(other *MoveEndpoint) bool {
 }
 
 // MightUnifyWith returns true if it is possible that a later call to
-// UnifyMoveEndpoints might succeed if given the reciever and the other
+// UnifyMoveEndpoints might succeed if given the receiver and the other
 // given endpoint.
 //
 // This is intended for early static validation of obviously-wrong situations,
@@ -84,7 +86,7 @@ func (e *MoveEndpoint) MightUnifyWith(other *MoveEndpoint) bool {
 	return from != nil && to != nil
 }
 
-// ConfigMovable transforms the reciever into a ConfigMovable by resolving it
+// ConfigMoveable transforms the receiver into a ConfigMovable by resolving it
 // relative to the given base module, which should be the module where
 // the MoveEndpoint expression was found.
 //
