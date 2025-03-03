@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package tfdiags
@@ -139,7 +141,7 @@ func (d *attributeDiagnostic) ElaborateFromConfigBody(body hcl.Body, addr string
 	// This function will often end up re-decoding values that were already
 	// decoded by an earlier step. This is non-ideal but is architecturally
 	// more convenient than arranging for source location information to be
-	// propagated to every place in Terraform, and this happens only in the
+	// propagated to every place in OpenTofu, and this happens only in the
 	// presence of errors where performance isn't a concern.
 
 	traverse := d.attrPath[:]

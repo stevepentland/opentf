@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -13,13 +15,13 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/terminal"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 // Test the PreApply hook for creating a new resource
@@ -55,7 +57,7 @@ func TestUiHookPreApply_create(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != opentf.HookActionContinue {
+	if action != tofu.HookActionContinue {
 		t.Fatalf("Expected hook to continue, given: %#v", action)
 	}
 
@@ -113,7 +115,7 @@ func TestUiHookPreApply_periodicTimer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != opentf.HookActionContinue {
+	if action != tofu.HookActionContinue {
 		t.Fatalf("Expected hook to continue, given: %#v", action)
 	}
 
@@ -124,15 +126,15 @@ func TestUiHookPreApply_periodicTimer(t *testing.T) {
 	close(uiState.DoneCh)
 	<-uiState.done
 
-	expectedOutput := `test_instance.foo: Modifying... [id=test]
-test_instance.foo: Still modifying... [id=test, 1s elapsed]
-test_instance.foo: Still modifying... [id=test, 2s elapsed]
-test_instance.foo: Still modifying... [id=test, 3s elapsed]
+	expectedRegexp := `test_instance\.foo: Modifying... \[id=test\]
+test_instance\.foo: Still modifying... \[id=test, \ds elapsed\]
+test_instance\.foo: Still modifying... \[id=test, \ds elapsed\]
+test_instance\.foo: Still modifying... \[id=test, \ds elapsed\]
 `
 	result := done(t)
 	output := result.Stdout()
-	if output != expectedOutput {
-		t.Fatalf("Output didn't match.\nExpected: %q\nGiven: %q", expectedOutput, output)
+	if matched, _ := regexp.MatchString(expectedRegexp, output); !matched {
+		t.Fatalf("Output didn't match.\nExpected: %q\nGiven: %q", expectedRegexp, output)
 	}
 
 	expectedErrOutput := ""
@@ -177,7 +179,7 @@ func TestUiHookPreApply_destroy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != opentf.HookActionContinue {
+	if action != tofu.HookActionContinue {
 		t.Fatalf("Expected hook to continue, given: %#v", action)
 	}
 
@@ -228,7 +230,7 @@ func TestUiHookPostApply_colorInterpolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != opentf.HookActionContinue {
+	if action != tofu.HookActionContinue {
 		t.Fatalf("Expected hook to continue, given: %#v", action)
 	}
 	result := done(t)
@@ -281,7 +283,7 @@ func TestUiHookPostApply_emptyState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != opentf.HookActionContinue {
+	if action != tofu.HookActionContinue {
 		t.Fatalf("Expected hook to continue, given: %#v", action)
 	}
 	result := done(t)
@@ -314,7 +316,7 @@ func TestPreProvisionInstanceStep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != opentf.HookActionContinue {
+	if action != tofu.HookActionContinue {
 		t.Fatalf("Expected hook to continue, given: %#v", action)
 	}
 	result := done(t)
@@ -430,12 +432,42 @@ func TestPreRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != opentf.HookActionContinue {
+	if action != tofu.HookActionContinue {
 		t.Fatalf("Expected hook to continue, given: %#v", action)
 	}
 	result := done(t)
 
 	if got, want := result.Stdout(), "test_instance.foo: Refreshing state... [id=test]\n"; got != want {
+		t.Fatalf("unexpected output\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestPreRefresh_concise(t *testing.T) {
+	streams, done := terminal.StreamsForTesting(t)
+	view := NewView(streams)
+	view.concise = true
+	h := NewUiHook(view)
+
+	addr := addrs.Resource{
+		Mode: addrs.ManagedResourceMode,
+		Type: "test_instance",
+		Name: "foo",
+	}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance)
+
+	priorState := cty.ObjectVal(map[string]cty.Value{
+		"id":  cty.StringVal("test"),
+		"bar": cty.ListValEmpty(cty.String),
+	})
+
+	_, err := h.PreRefresh(addr, states.CurrentGen, priorState)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := done(t)
+
+	if got, want := result.Stdout(), ""; got != want {
 		t.Fatalf("unexpected output\n got: %q\nwant: %q", got, want)
 	}
 }
@@ -462,7 +494,7 @@ func TestPreRefresh_noID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != opentf.HookActionContinue {
+	if action != tofu.HookActionContinue {
 		t.Fatalf("Expected hook to continue, given: %#v", action)
 	}
 	result := done(t)
@@ -489,7 +521,7 @@ func TestPreImportState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != opentf.HookActionContinue {
+	if action != tofu.HookActionContinue {
 		t.Fatalf("Expected hook to continue, given: %#v", action)
 	}
 	result := done(t)
@@ -537,7 +569,7 @@ func TestPostImportState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != opentf.HookActionContinue {
+	if action != tofu.HookActionContinue {
 		t.Fatalf("Expected hook to continue, given: %#v", action)
 	}
 	result := done(t)

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -6,7 +8,7 @@ package command
 import (
 	"strings"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 type PushCommand struct {
@@ -18,7 +20,7 @@ func (c *PushCommand) Run(args []string) int {
 	// give the user some next-steps after upgrading.
 	c.showDiagnostics(tfdiags.Sourceless(
 		tfdiags.Error,
-		"Command \"opentf push\" is no longer supported",
+		"Command \"tofu push\" is no longer supported",
 		"This command was used to push configuration to Terraform Enterprise legacy (v1), which has now reached end-of-life. To push configuration to a new cloud backend, use its REST API.",
 	))
 	return 1
@@ -26,7 +28,7 @@ func (c *PushCommand) Run(args []string) int {
 
 func (c *PushCommand) Help() string {
 	helpText := `
-Usage: opentf [global options] push [options] [DIR]
+Usage: tofu [global options] push [options] [DIR]
 
   This command was for the legacy version of Terraform Enterprise (v1), which
   has now reached end-of-life. Therefore this command is no longer supported.

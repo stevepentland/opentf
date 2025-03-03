@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package logging
@@ -11,11 +13,6 @@ import (
 	"strings"
 	"syscall"
 
-	// go.etcd.io/etcd imports capnslog, which calls log.SetOutput in its
-	// init() function, so importing it here means that our log.SetOutput
-	// wins. this is fixed in coreos v3.5, which is not released yet. See
-	// https://github.com/etcd-io/etcd/issues/12498 for more information.
-	_ "github.com/coreos/pkg/capnslog"
 	"github.com/hashicorp/go-hclog"
 )
 
@@ -34,7 +31,7 @@ const (
 )
 
 var (
-	// ValidLevels are the log level names that Terraform recognizes.
+	// ValidLevels are the log level names that OpenTofu recognizes.
 	ValidLevels = []string{"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "OFF"}
 
 	// logger is the global hclog logger

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package lang
@@ -7,15 +9,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	homedir "github.com/mitchellh/go-homedir"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/experiments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/lang/marks"
 	"github.com/zclconf/go-cty/cty"
+
+	"github.com/opentofu/opentofu/internal/experiments"
+	"github.com/opentofu/opentofu/internal/lang/marks"
 )
 
 // TestFunctions tests that functions are callable through the functionality
@@ -39,6 +43,8 @@ import (
 // it really is registered correctly) and possibly a small set of additional
 // functions showing real-world use-cases that rely on type conversion
 // behaviors.
+//
+//nolint:gocognit // This test intentionally embraces mainloop complexity so that maintenence can primarily focus on the declarative test table rather than the actual test logic.
 func TestFunctions(t *testing.T) {
 	// used in `pathexpand()` test
 	homePath, err := homedir.Dir()
@@ -108,6 +114,13 @@ func TestFunctions(t *testing.T) {
 			},
 		},
 
+		"base64gunzip": {
+			{
+				`base64gunzip("H4sIAAAAAAAA/ypJLS4BAAAA//8BAAD//wx+f9gEAAAA")`,
+				cty.StringVal("test"),
+			},
+		},
+
 		"base64sha256": {
 			{
 				`base64sha256("test")`,
@@ -138,7 +151,7 @@ func TestFunctions(t *testing.T) {
 				// Note: "can" only works with expressions that pass static
 				// validation, because it only gets an opportunity to run in
 				// that case. The following "works" (captures the error) because
-				// OpenTF understands it as a reference to an attribute
+				// OpenTofu understands it as a reference to an attribute
 				// that does not exist during dynamic evaluation.
 				//
 				// "can" doesn't work with references that could never possibly
@@ -178,6 +191,13 @@ func TestFunctions(t *testing.T) {
 						cty.StringVal("c"),
 					}),
 				}),
+			},
+		},
+
+		"cidrcontains": {
+			{
+				`cidrcontains("192.168.1.0/24", "192.168.1.1")`,
+				cty.True,
 			},
 		},
 
@@ -509,6 +529,17 @@ func TestFunctions(t *testing.T) {
 			{
 				`index(["a", "b", "c"], "a")`,
 				cty.NumberIntVal(0),
+			},
+		},
+
+		"issensitive": {
+			{
+				`issensitive(1)`,
+				cty.False,
+			},
+			{
+				`issensitive(sensitive(1))`,
+				cty.True,
 			},
 		},
 
@@ -962,6 +993,13 @@ func TestFunctions(t *testing.T) {
 			},
 		},
 
+		"templatestring": {
+			{
+				`templatestring("Hello, $${name}!", {name = "Jodie"})`,
+				cty.StringVal("Hello, Jodie!"),
+			},
+		},
+
 		"timeadd": {
 			{
 				`timeadd("2017-11-22T00:00:00Z", "1s")`,
@@ -1076,7 +1114,7 @@ func TestFunctions(t *testing.T) {
 				// Note: "try" only works with expressions that pass static
 				// validation, because it only gets an opportunity to run in
 				// that case. The following "works" (captures the error) because
-				// OpenTF understands it as a reference to an attribute
+				// OpenTofu understands it as a reference to an attribute
 				// that does not exist during dynamic evaluation.
 				//
 				// "try" doesn't work with references that could never possibly
@@ -1084,7 +1122,7 @@ func TestFunctions(t *testing.T) {
 				// as an expression like "foo" alone which would be understood
 				// as an invalid resource reference. That's okay because this
 				// function exists primarily to ease access to dynamically-typed
-				// structures that OpenTF can't statically validate by
+				// structures that OpenTofu can't statically validate by
 				// definition.
 				`try({}.baz, "fallback")`,
 				cty.StringVal("fallback"),
@@ -1106,6 +1144,12 @@ func TestFunctions(t *testing.T) {
 			{
 				`urlencode("foo:bar@localhost?foo=bar&bar=baz")`,
 				cty.StringVal("foo%3Abar%40localhost%3Ffoo%3Dbar%26bar%3Dbaz"),
+			},
+		},
+		"urldecode": {
+			{
+				`urldecode("foo%3Abar%40localhost%3Ffoo%3Dbar%26bar%3Dbaz")`,
+				cty.StringVal("foo:bar@localhost?foo=bar&bar=baz"),
 			},
 		},
 
@@ -1205,9 +1249,10 @@ func TestFunctions(t *testing.T) {
 		// suitable type.
 		for _, impureFunc := range impureFunctions {
 			delete(allFunctions, impureFunc)
+			delete(allFunctions, CoreNamespace+impureFunc)
 		}
 		for f := range scope.Functions() {
-			if _, ok := tests[f]; !ok {
+			if _, ok := tests[strings.TrimPrefix(f, CoreNamespace)]; !ok {
 				t.Errorf("Missing test for function %s\n", f)
 			}
 		}

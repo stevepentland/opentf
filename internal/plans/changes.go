@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package plans
@@ -6,11 +8,11 @@ package plans
 import (
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/states"
 )
 
-// Changes describes various actions that OpenTF will attempt to take if
+// Changes describes various actions that OpenTofu will attempt to take if
 // the corresponding plan is applied.
 //
 // A Changes object can be rendered into a visual diff (by the caller, using
@@ -244,12 +246,12 @@ type ResourceInstanceChange struct {
 	RequiredReplace cty.PathSet
 
 	// Private allows a provider to stash any extra data that is opaque to
-	// OpenTF that relates to this change. OpenTF will save this
+	// OpenTofu that relates to this change. OpenTofu will save this
 	// byte-for-byte and return it to the provider in the apply call.
 	Private []byte
 }
 
-// Encode produces a variant of the reciever that has its change values
+// Encode produces a variant of the receiver that has its change values
 // serialized so it can be written to a plan file. Pass the implied type of the
 // corresponding resource type schema for correct operation.
 func (rc *ResourceInstanceChange) Encode(ty cty.Type) (*ResourceInstanceChangeSrc, error) {
@@ -280,8 +282,8 @@ func (rc *ResourceInstanceChange) Moved() bool {
 }
 
 // Simplify will, where possible, produce a change with a simpler action than
-// the receiever given a flag indicating whether the caller is dealing with
-// a normal apply or a destroy. This flag deals with the fact that OpenTF
+// the receiver given a flag indicating whether the caller is dealing with
+// a normal apply or a destroy. This flag deals with the fact that OpenTofu
 // Core uses a specialized graph node type for destroying; only that
 // specialized node should set "destroying" to true.
 //
@@ -486,7 +488,7 @@ type OutputChange struct {
 	Sensitive bool
 }
 
-// Encode produces a variant of the reciever that has its change values
+// Encode produces a variant of the receiver that has its change values
 // serialized so it can be written to a plan file.
 func (oc *OutputChange) Encode() (*OutputChangeSrc, error) {
 	cs, err := oc.Change.Encode(cty.DynamicPseudoType)
@@ -545,7 +547,7 @@ type Change struct {
 	GeneratedConfig string
 }
 
-// Encode produces a variant of the reciever that has its change values
+// Encode produces a variant of the receiver that has its change values
 // serialized so it can be written to a plan file. Pass the type constraint
 // that the values are expected to conform to; to properly decode the values
 // later an identical type constraint must be provided at that time.

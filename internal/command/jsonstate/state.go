@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package jsonstate
@@ -11,12 +13,12 @@ import (
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonchecks"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/lang/marks"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/command/jsonchecks"
+	"github.com/opentofu/opentofu/internal/lang/marks"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 const (
@@ -29,7 +31,7 @@ const (
 	DataResourceMode    = "data"
 )
 
-// State is the top-level representation of the json format of a terraform
+// State is the top-level representation of the json format of a tofu
 // state.
 type State struct {
 	FormatVersion    string          `json:"format_version,omitempty"`
@@ -104,10 +106,10 @@ type Resource struct {
 	// addresses relative to the containing module.
 	DependsOn []string `json:"depends_on,omitempty"`
 
-	// Tainted is true if the resource is tainted in terraform state.
+	// Tainted is true if the resource is tainted in tofu state.
 	Tainted bool `json:"tainted,omitempty"`
 
-	// Deposed is set if the resource is deposed in terraform state.
+	// Deposed is set if the resource is deposed in tofu state.
 	DeposedKey string `json:"deposed_key,omitempty"`
 }
 
@@ -143,7 +145,7 @@ func newState() *State {
 
 // MarshalForRenderer returns the pre-json encoding changes of the state, in a
 // format available to the structured renderer.
-func MarshalForRenderer(sf *statefile.File, schemas *opentf.Schemas) (Module, map[string]Output, error) {
+func MarshalForRenderer(sf *statefile.File, schemas *tofu.Schemas) (Module, map[string]Output, error) {
 	if sf.State.Modules == nil {
 		// Empty state case.
 		return Module{}, nil, nil
@@ -164,7 +166,7 @@ func MarshalForRenderer(sf *statefile.File, schemas *opentf.Schemas) (Module, ma
 
 // MarshalForLog returns the origin JSON compatible state, read for a logging
 // package to marshal further.
-func MarshalForLog(sf *statefile.File, schemas *opentf.Schemas) (*State, error) {
+func MarshalForLog(sf *statefile.File, schemas *tofu.Schemas) (*State, error) {
 	output := newState()
 
 	if sf == nil || sf.State.Empty() {
@@ -189,8 +191,8 @@ func MarshalForLog(sf *statefile.File, schemas *opentf.Schemas) (*State, error) 
 	return output, nil
 }
 
-// Marshal returns the json encoding of a terraform state.
-func Marshal(sf *statefile.File, schemas *opentf.Schemas) ([]byte, error) {
+// Marshal returns the json encoding of a tofu state.
+func Marshal(sf *statefile.File, schemas *tofu.Schemas) ([]byte, error) {
 	output, err := MarshalForLog(sf, schemas)
 	if err != nil {
 		return nil, err
@@ -200,7 +202,7 @@ func Marshal(sf *statefile.File, schemas *opentf.Schemas) ([]byte, error) {
 	return ret, err
 }
 
-func (jsonstate *State) marshalStateValues(s *states.State, schemas *opentf.Schemas) error {
+func (jsonstate *State) marshalStateValues(s *states.State, schemas *tofu.Schemas) error {
 	var sv StateValues
 	var err error
 
@@ -248,7 +250,7 @@ func MarshalOutputs(outputs map[string]*states.OutputValue) (map[string]Output, 
 	return ret, nil
 }
 
-func marshalRootModule(s *states.State, schemas *opentf.Schemas) (Module, error) {
+func marshalRootModule(s *states.State, schemas *tofu.Schemas) (Module, error) {
 	var ret Module
 	var err error
 
@@ -292,10 +294,10 @@ func marshalRootModule(s *states.State, schemas *opentf.Schemas) (Module, error)
 }
 
 // marshalModules is an ungainly recursive function to build a module structure
-// out of terraform state.
+// out of tofu state.
 func marshalModules(
 	s *states.State,
-	schemas *opentf.Schemas,
+	schemas *tofu.Schemas,
 	modules []addrs.ModuleInstance,
 	moduleMap map[string][]addrs.ModuleInstance,
 ) ([]Module, error) {
@@ -333,7 +335,7 @@ func marshalModules(
 	return ret, nil
 }
 
-func marshalResources(resources map[string]*states.Resource, module addrs.ModuleInstance, schemas *opentf.Schemas) ([]Resource, error) {
+func marshalResources(resources map[string]*states.Resource, module addrs.ModuleInstance, schemas *tofu.Schemas) ([]Resource, error) {
 	var ret []Resource
 
 	var sortedResources []*states.Resource
@@ -415,7 +417,7 @@ func marshalResources(resources map[string]*states.Resource, module addrs.Module
 				if schema.ContainsSensitive() {
 					marks = append(marks, schema.ValueMarks(value, nil)...)
 				}
-				s := SensitiveAsBool(value.MarkWithPaths(marks))
+				s := SensitiveAsBoolWithPathValueMarks(value, marks)
 				v, err := ctyjson.Marshal(s, s.Type())
 				if err != nil {
 					return nil, err
@@ -494,73 +496,130 @@ func marshalResources(resources map[string]*states.Resource, module addrs.Module
 }
 
 func SensitiveAsBool(val cty.Value) cty.Value {
+	return SensitiveAsBoolWithPathValueMarks(val, nil)
+}
+
+func SensitiveAsBoolWithPathValueMarks(val cty.Value, pvms []cty.PathValueMarks) cty.Value {
+	var sensitiveMarks []cty.PathValueMarks
+	for _, pvm := range pvms {
+		if _, ok := pvm.Marks[marks.Sensitive]; ok {
+			sensitiveMarks = append(sensitiveMarks, pvm)
+		}
+	}
+	return sensitiveAsBoolWithPathValueMarks(val, cty.Path{}, sensitiveMarks)
+}
+
+func sensitiveAsBoolWithPathValueMarks(val cty.Value, path cty.Path, pvms []cty.PathValueMarks) cty.Value {
 	if val.HasMark(marks.Sensitive) {
 		return cty.True
 	}
-
+	for _, pvm := range pvms {
+		if path.Equals(pvm.Path) {
+			return cty.True
+		}
+	}
 	ty := val.Type()
 	switch {
 	case val.IsNull(), ty.IsPrimitiveType(), ty.Equals(cty.DynamicPseudoType):
 		return cty.False
 	case ty.IsListType() || ty.IsTupleType() || ty.IsSetType():
-		if !val.IsKnown() {
-			// If the collection is unknown we can't say anything about the
-			// sensitivity of its contents
-			return cty.EmptyTupleVal
-		}
-		length := val.LengthInt()
-		if length == 0 {
-			// If there are no elements then we can't have sensitive values
-			return cty.EmptyTupleVal
-		}
-		vals := make([]cty.Value, 0, length)
-		it := val.ElementIterator()
-		for it.Next() {
-			_, v := it.Element()
-			vals = append(vals, SensitiveAsBool(v))
-		}
-		// The above transform may have changed the types of some of the
-		// elements, so we'll always use a tuple here in case we've now made
-		// different elements have different types. Our ultimate goal is to
-		// marshal to JSON anyway, and all of these sequence types are
-		// indistinguishable in JSON.
-		return cty.TupleVal(vals)
-	case ty.IsMapType() || ty.IsObjectType():
-		if !val.IsKnown() {
-			// If the map/object is unknown we can't say anything about the
-			// sensitivity of its attributes
-			return cty.EmptyObjectVal
-		}
-		var length int
-		switch {
-		case ty.IsMapType():
-			length = val.LengthInt()
-		default:
-			length = len(val.Type().AttributeTypes())
-		}
-		if length == 0 {
-			// If there are no elements then we can't have sensitive values
-			return cty.EmptyObjectVal
-		}
-		vals := make(map[string]cty.Value)
-		it := val.ElementIterator()
-		for it.Next() {
-			k, v := it.Element()
-			s := SensitiveAsBool(v)
-			// Omit all of the "false"s for non-sensitive values for more
-			// compact serialization
-			if !s.RawEquals(cty.False) {
-				vals[k.AsString()] = s
-			}
-		}
-		// The above transform may have changed the types of some of the
-		// elements, so we'll always use an object here in case we've now made
-		// different elements have different types. Our ultimate goal is to
-		// marshal to JSON anyway, and all of these mapping types are
-		// indistinguishable in JSON.
-		return cty.ObjectVal(vals)
+		return sensitiveCollectionAsBool(val, path, pvms)
+	case ty.IsMapType():
+		return sensitiveMapAsBool(val, path, pvms)
+	case ty.IsObjectType():
+		return sensitiveObjectAsBool(val, path, pvms)
 	default:
 		// Should never happen, since the above should cover all types
-		panic(fmt.Sprintf("sensitiveAsBool cannot handle %#v", val))
+		panic(fmt.Sprintf("sensitiveAsBoolWithPathValueMarks cannot handle %#v", val))
 	}
+}
+
+func sensitiveCollectionAsBool(val cty.Value, path []cty.PathStep, pvms []cty.PathValueMarks) cty.Value {
+	if !val.IsKnown() {
+		// If the collection is unknown we can't say anything about the
+		// sensitivity of its contents
+		return cty.EmptyTupleVal
+	}
+	length := val.LengthInt()
+	if length == 0 {
+		// If there are no elements then we can't have sensitive values
+		return cty.EmptyTupleVal
+	}
+	vals := make([]cty.Value, 0, length)
+	it := val.ElementIterator()
+	for it.Next() {
+		kv, ev := it.Element()
+		path = append(path, cty.IndexStep{
+			Key: kv,
+		})
+		vals = append(vals, sensitiveAsBoolWithPathValueMarks(ev, path, pvms))
+		path = path[0 : len(path)-1]
+	}
+	// The above transform may have changed the types of some of the
+	// elements, so we'll always use a tuple here in case we've now made
+	// different elements have different types. Our ultimate goal is to
+	// marshal to JSON anyway, and all of these sequence types are
+	// indistinguishable in JSON.
+	return cty.TupleVal(vals)
+}
+
+func sensitiveMapAsBool(val cty.Value, path []cty.PathStep, pvms []cty.PathValueMarks) cty.Value {
+	if !val.IsKnown() {
+		// If the map/object is unknown we can't say anything about the
+		// sensitivity of its attributes
+		return cty.EmptyObjectVal
+	}
+	length := val.LengthInt()
+	if length == 0 {
+		// If there are no elements then we can't have sensitive values
+		return cty.EmptyObjectVal
+	}
+
+	vals := make(map[string]cty.Value)
+	it := val.ElementIterator()
+	for it.Next() {
+		kv, ev := it.Element()
+		path = append(path, cty.IndexStep{
+			Key: kv,
+		})
+		s := sensitiveAsBoolWithPathValueMarks(ev, path, pvms)
+		path = path[0 : len(path)-1]
+		// Omit all of the "false"s for non-sensitive values for more
+		// compact serialization
+		if !s.RawEquals(cty.False) {
+			vals[kv.AsString()] = s
+		}
+	}
+	// The above transform may have changed the types of some of the
+	// elements, so we'll always use an object here in case we've now made
+	// different elements have different types. Our ultimate goal is to
+	// marshal to JSON anyway, and all of these mapping types are
+	// indistinguishable in JSON.
+	return cty.ObjectVal(vals)
+}
+
+func sensitiveObjectAsBool(val cty.Value, path []cty.PathStep, pvms []cty.PathValueMarks) cty.Value {
+	if !val.IsKnown() {
+		// If the map/object is unknown we can't say anything about the
+		// sensitivity of its attributes
+		return cty.EmptyObjectVal
+	}
+	ty := val.Type()
+	if len(ty.AttributeTypes()) == 0 {
+		// If there are no elements then we can't have sensitive values
+		return cty.EmptyObjectVal
+	}
+	vals := make(map[string]cty.Value)
+	for name := range ty.AttributeTypes() {
+		av := val.GetAttr(name)
+		path = append(path, cty.GetAttrStep{
+			Name: name,
+		})
+		s := sensitiveAsBoolWithPathValueMarks(av, path, pvms)
+		path = path[0 : len(path)-1]
+		if !s.RawEquals(cty.False) {
+			vals[name] = s
+		}
+	}
+	return cty.ObjectVal(vals)
 }

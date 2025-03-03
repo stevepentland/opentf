@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package json
@@ -6,7 +8,7 @@ package json
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -15,8 +17,8 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hcltest"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/lang/marks"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/lang/marks"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -24,17 +26,17 @@ func TestNewDiagnostic(t *testing.T) {
 	// Common HCL for diags with source ranges. This does not have any real
 	// semantic errors, but we can synthesize fake HCL errors which will
 	// exercise the diagnostic rendering code using this
-	sources := map[string][]byte{
-		"test.tf": []byte(`resource "test_resource" "test" {
+	sources := map[string]*hcl.File{
+		"test.tf": {Bytes: []byte(`resource "test_resource" "test" {
   foo = var.boop["hello!"]
   bar = {
     baz = maybe
   }
 }
-`),
-		"short.tf":       []byte("bad source code"),
-		"odd-comment.tf": []byte("foo\n\n#\n"),
-		"values.tf": []byte(`[
+`)},
+		"short.tf":       {Bytes: []byte("bad source code")},
+		"odd-comment.tf": {Bytes: []byte("foo\n\n#\n")},
+		"values.tf": {Bytes: []byte(`[
   var.a,
   var.b,
   var.c,
@@ -47,7 +49,7 @@ func TestNewDiagnostic(t *testing.T) {
   var.j,
   var.k,
 ]
-`),
+`)},
 	}
 	testCases := map[string]struct {
 		diag interface{} // allow various kinds of diags
@@ -910,20 +912,25 @@ func TestNewDiagnostic(t *testing.T) {
 				t.Fatalf("failed to open golden file: %s", err)
 			}
 			defer wantFile.Close()
-			wantBytes, err := ioutil.ReadAll(wantFile)
+			wantBytes, err := io.ReadAll(wantFile)
 			if err != nil {
 				t.Fatalf("failed to read output file: %s", err)
 			}
 
 			// Don't care about leading or trailing whitespace
-			gotString := strings.TrimSpace(string(gotBytes))
-			wantString := strings.TrimSpace(string(wantBytes))
+			gotString := normaliseNewlines(strings.TrimSpace(string(gotBytes)))
+			wantString := normaliseNewlines(strings.TrimSpace(string(wantBytes)))
 
 			if !cmp.Equal(wantString, gotString) {
 				t.Fatalf("wrong result\n:%s", cmp.Diff(wantString, gotString))
 			}
 		})
 	}
+}
+
+// Function to normalise newlines in a string for Windows
+func normaliseNewlines(s string) string {
+	return strings.ReplaceAll(s, "\r\n", "\n")
 }
 
 // Helper function to make constructing literal Diagnostics easier. There

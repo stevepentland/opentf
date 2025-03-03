@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -10,8 +12,8 @@ import (
 
 	svchost "github.com/hashicorp/terraform-svchost"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/cliconfig"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/command/cliconfig"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 // LogoutCommand is a Command implementation which removes stored credentials
@@ -30,19 +32,16 @@ func (c *LogoutCommand) Run(args []string) int {
 	}
 
 	args = cmdFlags.Args()
-	if len(args) > 1 {
+	if len(args) != 1 {
 		c.Ui.Error(
-			"The logout command expects at most one argument: the host to log out of.")
+			"The logout command expects exactly one argument: the host to log out of.")
 		cmdFlags.Usage()
 		return 1
 	}
 
 	var diags tfdiags.Diagnostics
 
-	givenHostname := "app.terraform.io"
-	if len(args) != 0 {
-		givenHostname = args[0]
-	}
+	givenHostname := args[0]
 
 	hostname, err := svchost.ForComparison(givenHostname)
 	if err != nil {
@@ -73,7 +72,7 @@ func (c *LogoutCommand) Run(args []string) int {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			fmt.Sprintf("Credentials for %s are manually configured", dispHostname),
-			"The \"opentf logout\" command cannot log out because credentials for this host are manually configured in a CLI configuration file.\n\nTo log out, revoke the existing credentials and remove that block from the CLI configuration.",
+			"The \"tofu logout\" command cannot log out because credentials for this host are manually configured in a CLI configuration file.\n\nTo log out, revoke the existing credentials and remove that block from the CLI configuration.",
 		))
 	}
 
@@ -109,7 +108,7 @@ func (c *LogoutCommand) Run(args []string) int {
 	c.Ui.Output(
 		fmt.Sprintf(
 			c.Colorize().Color(strings.TrimSpace(`
-[green][bold]Success![reset] [bold]OpenTF has removed the stored API token for %s.[reset]
+[green][bold]Success![reset] [bold]OpenTofu has removed the stored API token for %s.[reset]
 `)),
 			dispHostname,
 		) + "\n",
@@ -132,14 +131,12 @@ func (c *LogoutCommand) Help() string {
 	}
 
 	helpText := `
-Usage: opentf [global options] logout [hostname]
+Usage: tofu [global options] logout [hostname]
 
   Removes locally-stored credentials for specified hostname.
 
   Note: the API token is only removed from local storage, not destroyed on the
   remote server, so it will remain valid until manually revoked.
-
-  If no hostname is provided, the default hostname is app.terraform.io.
       %s
 `
 	return strings.TrimSpace(helpText)

@@ -1,16 +1,21 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package http
 
-//go:generate go run github.com/golang/mock/mockgen -package $GOPACKAGE -source $GOFILE -destination mock_$GOFILE
+//go:generate go run go.uber.org/mock/mockgen -package $GOPACKAGE -source $GOFILE -destination mock_$GOFILE
 
 import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,12 +27,13 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/golang/mock/gomock"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/states"
 	"github.com/zclconf/go-cty/cty"
+	"go.uber.org/mock/gomock"
 )
 
 const sampleState = `
@@ -271,7 +277,7 @@ func TestMTLSServer_NoCertFails(t *testing.T) {
 		"address":                cty.StringVal(url),
 		"skip_cert_verification": cty.BoolVal(true),
 	}
-	b := backend.TestBackendConfig(t, New(), configs.SynthBody("synth", conf)).(*Backend)
+	b := backend.TestBackendConfig(t, New(encryption.StateEncryptionDisabled()), configs.SynthBody("synth", conf)).(*Backend)
 	if nil == b {
 		t.Fatal("nil backend")
 	}
@@ -281,11 +287,20 @@ func TestMTLSServer_NoCertFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error fetching StateMgr with %s: %v", backend.DefaultStateName, err)
 	}
+
+	opErr := new(net.OpError)
 	err = sm.RefreshState()
-	if nil == err {
-		t.Error("expected error when refreshing state without a client cert")
-	} else if !strings.Contains(err.Error(), "remote error: tls: bad certificate") {
-		t.Errorf("expected the error to report missing tls credentials: %v", err)
+	if err == nil {
+		t.Fatal("expected error when refreshing state without a client cert")
+	}
+	if errors.As(err, &opErr) {
+		errType := fmt.Sprintf("%T", opErr.Err)
+		expected := "tls.alert"
+		if errType != expected {
+			t.Fatalf("expected net.OpError.Err type: %q got: %q error:%s", expected, errType, err)
+		}
+	} else {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -333,7 +348,7 @@ func TestMTLSServer_WithCertPasses(t *testing.T) {
 		"client_certificate_pem":    cty.StringVal(string(clientCertData)),
 		"client_private_key_pem":    cty.StringVal(string(clientKeyData)),
 	}
-	b := backend.TestBackendConfig(t, New(), configs.SynthBody("synth", conf)).(*Backend)
+	b := backend.TestBackendConfig(t, New(encryption.StateEncryptionDisabled()), configs.SynthBody("synth", conf)).(*Backend)
 	if nil == b {
 		t.Fatal("nil backend")
 	}

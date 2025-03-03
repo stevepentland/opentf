@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package planfile
@@ -7,14 +9,16 @@ import (
 	"archive/zip"
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"os"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configload"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/depsfile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/configs/configload"
+	"github.com/opentofu/opentofu/internal/depsfile"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 const tfstateFilename = "tfstate"
@@ -47,21 +51,36 @@ func (e *ErrUnusableLocalPlan) Unwrap() error {
 // be used to access the individual portions of the file for further
 // processing.
 type Reader struct {
-	zip *zip.ReadCloser
+	zip *zip.Reader
 }
 
 // Open creates a Reader for the file at the given filename, or returns an error
 // if the file doesn't seem to be a planfile. NOTE: Most commands that accept a
 // plan file should use OpenWrapped instead, so they can support both local and
 // cloud plan files.
-func Open(filename string) (*Reader, error) {
-	r, err := zip.OpenReader(filename)
+func Open(filename string, enc encryption.PlanEncryption) (*Reader, error) {
+	raw, err := os.ReadFile(filename)
 	if err != nil {
+		return nil, err
+	}
+
+	decrypted, diags := enc.DecryptPlan(raw)
+	if diags != nil {
+		return nil, diags
+	}
+
+	r, err := zip.NewReader(bytes.NewReader(decrypted), int64(len(decrypted)))
+	if err != nil {
+		// Check to see if it's encrypted
+		if encrypted, _ := encryption.IsEncryptionPayload(decrypted); encrypted {
+			return nil, errUnusable(fmt.Errorf("the given plan file is encrypted and requires a valid encryption configuration to decrypt"))
+		}
+
 		// To give a better error message, we'll sniff to see if this looks
 		// like our old plan format from versions prior to 0.12.
-		if b, sErr := ioutil.ReadFile(filename); sErr == nil {
+		if b, sErr := os.ReadFile(filename); sErr == nil {
 			if bytes.HasPrefix(b, []byte("tfplan")) {
-				return nil, errUnusable(fmt.Errorf("the given plan file was created by an earlier version of OpenTF, or an earlier version of Terraform; plan files cannot be shared between different OpenTF or Terraform versions"))
+				return nil, errUnusable(fmt.Errorf("the given plan file was created by an earlier version of OpenTofu, or an earlier version of Terraform; plan files cannot be shared between different OpenTofu or Terraform versions"))
 			}
 		}
 		return nil, err
@@ -93,7 +112,7 @@ func Open(filename string) (*Reader, error) {
 //
 // Errors can be returned for various reasons, including if the plan file
 // is not of an appropriate format version, if it was created by a different
-// version of OpenTF, if it is invalid, etc.
+// version of OpenTofu, if it is invalid, etc.
 func (r *Reader) ReadPlan() (*plans.Plan, error) {
 	var planFile *zip.File
 	for _, file := range r.zip.File {
@@ -110,9 +129,8 @@ func (r *Reader) ReadPlan() (*plans.Plan, error) {
 
 	pr, err := planFile.Open()
 	if err != nil {
-		return nil, errUnusable(fmt.Errorf("failed to retrieve plan from plan file: %s", err))
+		return nil, errUnusable(fmt.Errorf("failed to retrieve plan from plan file: %w", err))
 	}
-	defer pr.Close()
 
 	// There's a slight mismatch in how plans.Plan is modeled vs. how
 	// the underlying plan file format works, because the "tfplan" embedded
@@ -132,11 +150,11 @@ func (r *Reader) ReadPlan() (*plans.Plan, error) {
 
 	prevRunStateFile, err := r.ReadPrevStateFile()
 	if err != nil {
-		return nil, errUnusable(fmt.Errorf("failed to read previous run state from plan file: %s", err))
+		return nil, errUnusable(fmt.Errorf("failed to read previous run state from plan file: %w", err))
 	}
 	priorStateFile, err := r.ReadStateFile()
 	if err != nil {
-		return nil, errUnusable(fmt.Errorf("failed to read prior state from plan file: %s", err))
+		return nil, errUnusable(fmt.Errorf("failed to read prior state from plan file: %w", err))
 	}
 
 	ret.PrevRunState = prevRunStateFile.State
@@ -155,9 +173,9 @@ func (r *Reader) ReadStateFile() (*statefile.File, error) {
 		if file.Name == tfstateFilename {
 			r, err := file.Open()
 			if err != nil {
-				return nil, errUnusable(fmt.Errorf("failed to extract state from plan file: %s", err))
+				return nil, errUnusable(fmt.Errorf("failed to extract state from plan file: %w", err))
 			}
-			return statefile.Read(r)
+			return statefile.Read(r, encryption.StateEncryptionDisabled())
 		}
 	}
 	return nil, errUnusable(statefile.ErrNoState)
@@ -173,9 +191,9 @@ func (r *Reader) ReadPrevStateFile() (*statefile.File, error) {
 		if file.Name == tfstatePreviousFilename {
 			r, err := file.Open()
 			if err != nil {
-				return nil, errUnusable(fmt.Errorf("failed to extract previous state from plan file: %s", err))
+				return nil, errUnusable(fmt.Errorf("failed to extract previous state from plan file: %w", err))
 			}
-			return statefile.Read(r)
+			return statefile.Read(r, encryption.StateEncryptionDisabled())
 		}
 	}
 	return nil, errUnusable(statefile.ErrNoState)
@@ -187,7 +205,7 @@ func (r *Reader) ReadPrevStateFile() (*statefile.File, error) {
 // This is a lower-level alternative to ReadConfig that just extracts the
 // source files, without attempting to parse them.
 func (r *Reader) ReadConfigSnapshot() (*configload.Snapshot, error) {
-	return readConfigSnapshot(&r.zip.Reader)
+	return readConfigSnapshot(r.zip)
 }
 
 // ReadConfig reads the configuration embedded in the plan file.
@@ -195,7 +213,7 @@ func (r *Reader) ReadConfigSnapshot() (*configload.Snapshot, error) {
 // Internally this function delegates to the configs/configload package to
 // parse the embedded configuration and so it returns diagnostics (rather than
 // a native Go error as with other methods on Reader).
-func (r *Reader) ReadConfig() (*configs.Config, tfdiags.Diagnostics) {
+func (r *Reader) ReadConfig(rootCall configs.StaticModuleCall) (*configs.Config, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 
 	snap, err := r.ReadConfigSnapshot()
@@ -210,7 +228,7 @@ func (r *Reader) ReadConfig() (*configs.Config, tfdiags.Diagnostics) {
 
 	loader := configload.NewLoaderFromSnapshot(snap)
 	rootDir := snap.Modules[""].Dir // Root module base directory
-	config, configDiags := loader.LoadConfig(rootDir)
+	config, configDiags := loader.LoadConfig(rootDir, rootCall)
 	diags = diags.Append(configDiags)
 
 	return config, diags
@@ -236,7 +254,7 @@ func (r *Reader) ReadDependencyLocks() (*depsfile.Locks, tfdiags.Diagnostics) {
 				))
 				return nil, diags
 			}
-			src, err := ioutil.ReadAll(r)
+			src, err := io.ReadAll(r)
 			if err != nil {
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
@@ -255,12 +273,7 @@ func (r *Reader) ReadDependencyLocks() (*depsfile.Locks, tfdiags.Diagnostics) {
 	diags = diags.Append(tfdiags.Sourceless(
 		tfdiags.Error,
 		"Saved plan has no dependency lock information",
-		"The specified saved plan file does not include any dependency lock information. This is a bug in the previous run of OpenTF that created this file.",
+		"The specified saved plan file does not include any dependency lock information. This is a bug in the previous run of OpenTofu that created this file.",
 	))
 	return nil, diags
-}
-
-// Close closes the file, after which no other operations may be performed.
-func (r *Reader) Close() error {
-	return r.zip.Close()
 }

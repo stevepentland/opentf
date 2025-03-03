@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package azure
@@ -9,10 +11,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/remote"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/remote"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
 	"github.com/tombuildsstuff/giovanni/storage/2018-11-09/blob/blobs"
 	"github.com/tombuildsstuff/giovanni/storage/2018-11-09/blob/containers"
 )
@@ -94,9 +96,10 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 		keyName:            b.path(name),
 		accountName:        b.accountName,
 		snapshot:           b.snapshot,
+		timeoutSeconds:     b.armClient.timeoutSeconds,
 	}
 
-	stateMgr := &remote.State{Client: client}
+	stateMgr := remote.NewState(client, b.encryption)
 
 	// Grab the value
 	if err := stateMgr.RefreshState(); err != nil {
@@ -110,7 +113,7 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 		lockInfo.Operation = "init"
 		lockId, err := client.Lock(lockInfo)
 		if err != nil {
-			return nil, fmt.Errorf("failed to lock azure state: %s", err)
+			return nil, fmt.Errorf("failed to lock azure state: %w", err)
 		}
 
 		// Local helper function so we can call it multiple places
@@ -164,7 +167,7 @@ func (b *Backend) path(name string) string {
 const errStateUnlock = `
 Error unlocking Azure state. Lock ID: %s
 
-Error: %s
+Error: %w
 
 You may have to force-unlock this state in order to use it again.
 `

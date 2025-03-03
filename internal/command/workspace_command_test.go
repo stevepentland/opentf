@@ -1,24 +1,26 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mitchellh/cli"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend/local"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/inmem"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/backend/local"
+	"github.com/opentofu/opentofu/internal/backend/remote-state/inmem"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
 
-	legacy "github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/opentf"
+	legacy "github.com/opentofu/opentofu/internal/legacy/tofu"
 )
 
 func TestWorkspace_createAndChange(t *testing.T) {
@@ -71,7 +73,7 @@ func TestWorkspace_createAndList(t *testing.T) {
 	defer testChdir(t, td)()
 
 	// make sure a vars file doesn't interfere
-	err := ioutil.WriteFile(
+	err := os.WriteFile(
 		DefaultVarsFilename,
 		[]byte(`foo = "bar"`),
 		0644,
@@ -119,7 +121,7 @@ func TestWorkspace_createAndShow(t *testing.T) {
 	defer testChdir(t, td)()
 
 	// make sure a vars file doesn't interfere
-	err := ioutil.WriteFile(
+	err := os.WriteFile(
 		DefaultVarsFilename,
 		[]byte(`foo = "bar"`),
 		0644,
@@ -249,10 +251,11 @@ func TestWorkspace_createWithState(t *testing.T) {
 				Provider: addrs.NewDefaultProvider("test"),
 				Module:   addrs.RootModule,
 			},
+			addrs.NoKey,
 		)
 	})
 
-	err := statemgr.NewFilesystem("test.tfstate").WriteState(originalState)
+	err := statemgr.WriteAndPersist(statemgr.NewFilesystem("test.tfstate", encryption.StateEncryptionDisabled()), originalState, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,13 +272,13 @@ func TestWorkspace_createWithState(t *testing.T) {
 	}
 
 	newPath := filepath.Join(local.DefaultWorkspaceDir, "test", DefaultStateFilename)
-	envState := statemgr.NewFilesystem(newPath)
+	envState := statemgr.NewFilesystem(newPath, encryption.StateEncryptionDisabled())
 	err = envState.RefreshState()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	b := backend.TestBackendConfig(t, inmem.New(), nil)
+	b := backend.TestBackendConfig(t, inmem.New(encryption.StateEncryptionDisabled()), nil)
 	sMgr, err := b.StateMgr(workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -302,7 +305,7 @@ func TestWorkspace_delete(t *testing.T) {
 	if err := os.MkdirAll(DefaultDataDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := ioutil.WriteFile(filepath.Join(DefaultDataDir, local.DefaultWorkspaceFile), []byte("test"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(DefaultDataDir, local.DefaultWorkspaceFile), []byte("test"), 0644); err != nil {
 		t.Fatal(err)
 	}
 

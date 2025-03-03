@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package getproviders
@@ -36,7 +38,7 @@ const NilHash = Hash("")
 
 // ParseHash parses the string representation of a Hash into a Hash value.
 //
-// A particular version of Terraform only supports a fixed set of hash schemes,
+// A particular version of OpenTofu only supports a fixed set of hash schemes,
 // but this function intentionally allows unrecognized schemes so that we can
 // silently ignore other schemes that may be introduced in the future. For
 // that reason, the Scheme method of the returned Hash may return a value that
@@ -66,7 +68,7 @@ func MustParseHash(s string) Hash {
 	return hash
 }
 
-// Scheme returns the scheme of the recieving hash. If the receiver is not
+// Scheme returns the scheme of the receiving hash. If the receiver is not
 // using valid syntax then this method will panic.
 func (h Hash) Scheme() HashScheme {
 	colon := strings.Index(string(h), ":")
@@ -84,7 +86,7 @@ func (h Hash) HasScheme(want HashScheme) bool {
 	return h.Scheme() == want
 }
 
-// Value returns the scheme-specific value from the recieving hash. The
+// Value returns the scheme-specific value from the receiving hash. The
 // meaning of this value depends on the scheme.
 //
 // If the receiver is not using valid syntax then this method will panic.
@@ -116,7 +118,7 @@ func (h Hash) GoString() string {
 		return fmt.Sprintf("getproviders.HashSchemeZip.New(%q)", h.Value())
 	default:
 		// This fallback is for when we encounter lock files or API responses
-		// with hash schemes that the current version of Terraform isn't
+		// with hash schemes that the current version of OpenTofu isn't
 		// familiar with. They were presumably introduced in a later version.
 		return fmt.Sprintf("getproviders.HashScheme(%q).New(%q)", scheme, h.Value())
 	}
@@ -200,7 +202,7 @@ func PackageMatchesHash(loc PackageLocation, want Hash) (bool, error) {
 		}
 		return got == want, nil
 	default:
-		return false, fmt.Errorf("unsupported hash format (this may require a newer version of OpenTF)")
+		return false, fmt.Errorf("unsupported hash format (this may require a newer version of OpenTofu)")
 	}
 }
 
@@ -261,7 +263,7 @@ func PackageMatchesAnyHash(loc PackageLocation, allowed []Hash) (bool, error) {
 }
 
 // PreferredHashes examines all of the given hash strings and returns the one
-// that the current version of Terraform considers to provide the strongest
+// that the current version of OpenTofu considers to provide the strongest
 // verification.
 //
 // Returns an empty string if none of the given hashes are of a supported
@@ -356,7 +358,7 @@ func PackageHashV1(loc PackageLocation) (Hash, error) {
 	// changes by being used in a wide array of go.sum files already.
 	//
 	// In particular, it also supports computing an equivalent hash from
-	// an unpacked zip file, which is not important for Terraform workflow
+	// an unpacked zip file, which is not important for OpenTofu workflow
 	// today but is likely to become so in future if we adopt a top-level
 	// lockfile mechanism that is intended to be checked in to version control,
 	// rather than just a transient lock for a particular local cache directory.
@@ -399,7 +401,7 @@ func PackageHashV1(loc PackageLocation) (Hash, error) {
 }
 
 // Hash computes a hash of the contents of the package at the location
-// associated with the reciever, using whichever hash algorithm is the current
+// associated with the receiver, using whichever hash algorithm is the current
 // default.
 //
 // This method will change to use new hash versions as they are introduced
@@ -432,7 +434,7 @@ func (m PackageMeta) MatchesHash(want Hash) (bool, error) {
 // the receiver matches at least one of the given hashes, or false otherwise.
 //
 // If it cannot read from the given location, MatchesHash returns an error.
-// Unlike the signular MatchesHash, MatchesAnyHash considers an unsupported
+// Unlike the singular MatchesHash, MatchesAnyHash considers an unsupported
 // hash format to be a successful non-match.
 func (m PackageMeta) MatchesAnyHash(acceptable []Hash) (bool, error) {
 	return PackageMatchesAnyHash(m.Location, acceptable)

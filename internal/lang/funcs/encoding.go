@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package funcs
@@ -8,6 +10,7 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"log"
 	"net/url"
 	"unicode/utf8"
@@ -75,7 +78,7 @@ var TextEncodeBase64Func = function.New(&function.Spec{
 	Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 		encoding, err := ianaindex.IANA.Encoding(args[1].AsString())
 		if err != nil || encoding == nil {
-			return cty.UnknownVal(cty.String), function.NewArgErrorf(1, "%q is not a supported IANA encoding name or alias in this OpenTF version", args[1].AsString())
+			return cty.UnknownVal(cty.String), function.NewArgErrorf(1, "%q is not a supported IANA encoding name or alias in this OpenTofu version", args[1].AsString())
 		}
 
 		encName, err := ianaindex.IANA.Name(encoding)
@@ -119,7 +122,7 @@ var TextDecodeBase64Func = function.New(&function.Spec{
 	Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 		encoding, err := ianaindex.IANA.Encoding(args[1].AsString())
 		if err != nil || encoding == nil {
-			return cty.UnknownVal(cty.String), function.NewArgErrorf(1, "%q is not a supported IANA encoding name or alias in this OpenTF version", args[1].AsString())
+			return cty.UnknownVal(cty.String), function.NewArgErrorf(1, "%q is not a supported IANA encoding name or alias in this OpenTofu version", args[1].AsString())
 		}
 
 		encName, err := ianaindex.IANA.Name(encoding)
@@ -178,6 +181,38 @@ var Base64GzipFunc = function.New(&function.Spec{
 	},
 })
 
+// Base64GunzipFunc constructs a function that Base64 decodes a string and decompresses the result with gunzip.
+var Base64GunzipFunc = function.New(&function.Spec{
+	Params: []function.Parameter{
+		{
+			Name:        "str",
+			Type:        cty.String,
+			AllowMarked: true,
+		},
+	},
+	Type:         function.StaticReturnType(cty.String),
+	RefineResult: refineNotNull,
+	Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+		str, strMarks := args[0].Unmark()
+		s := str.AsString()
+		sDec, err := base64.StdEncoding.DecodeString(s)
+		if err != nil {
+			return cty.UnknownVal(cty.String), fmt.Errorf("failed to decode base64 data %s", redactIfSensitive(s, strMarks))
+		}
+		sDecBuffer := bytes.NewReader(sDec)
+		gzipReader, err := gzip.NewReader(sDecBuffer)
+		if err != nil {
+			return cty.UnknownVal(cty.String), fmt.Errorf("failed to gunzip bytestream: %w", err)
+		}
+		gunzip, err := io.ReadAll(gzipReader)
+		if err != nil {
+			return cty.UnknownVal(cty.String), fmt.Errorf("failed to read gunzip raw data: %w", err)
+		}
+
+		return cty.StringVal(string(gunzip)).WithMarks(strMarks), nil
+	},
+})
+
 // URLEncodeFunc constructs a function that applies URL encoding to a given string.
 var URLEncodeFunc = function.New(&function.Spec{
 	Params: []function.Parameter{
@@ -193,11 +228,31 @@ var URLEncodeFunc = function.New(&function.Spec{
 	},
 })
 
+// URLDecodeFunc constructs a function that applies URL decoding to a given encoded string.
+var URLDecodeFunc = function.New(&function.Spec{
+	Params: []function.Parameter{
+		{
+			Name: "str",
+			Type: cty.String,
+		},
+	},
+	Type:         function.StaticReturnType(cty.String),
+	RefineResult: refineNotNull,
+	Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+		query, err := url.QueryUnescape(args[0].AsString())
+		if err != nil {
+			return cty.UnknownVal(cty.String), fmt.Errorf("failed to decode URL '%s': %v", query, err)
+		}
+
+		return cty.StringVal(query), nil
+	},
+})
+
 // Base64Decode decodes a string containing a base64 sequence.
 //
-// OpenTF uses the "standard" Base64 alphabet as defined in RFC 4648 section 4.
+// OpenTofu uses the "standard" Base64 alphabet as defined in RFC 4648 section 4.
 //
-// Strings in the OpenTF language are sequences of unicode characters rather
+// Strings in the OpenTofu language are sequences of unicode characters rather
 // than bytes, so this function will also interpret the resulting bytes as
 // UTF-8. If the bytes after Base64 decoding are _not_ valid UTF-8, this function
 // produces an error.
@@ -207,9 +262,9 @@ func Base64Decode(str cty.Value) (cty.Value, error) {
 
 // Base64Encode applies Base64 encoding to a string.
 //
-// OpenTF uses the "standard" Base64 alphabet as defined in RFC 4648 section 4.
+// OpenTofu uses the "standard" Base64 alphabet as defined in RFC 4648 section 4.
 //
-// Strings in the OpenTF language are sequences of unicode characters rather
+// Strings in the OpenTofu language are sequences of unicode characters rather
 // than bytes, so this function will first encode the characters from the string
 // as UTF-8, and then apply Base64 encoding to the result.
 func Base64Encode(str cty.Value) (cty.Value, error) {
@@ -219,13 +274,20 @@ func Base64Encode(str cty.Value) (cty.Value, error) {
 // Base64Gzip compresses a string with gzip and then encodes the result in
 // Base64 encoding.
 //
-// OpenTF uses the "standard" Base64 alphabet as defined in RFC 4648 section 4.
+// OpenTofu uses the "standard" Base64 alphabet as defined in RFC 4648 section 4.
 //
-// Strings in the OpenTF language are sequences of unicode characters rather
+// Strings in the OpenTofu language are sequences of unicode characters rather
 // than bytes, so this function will first encode the characters from the string
 // as UTF-8, then apply gzip compression, and then finally apply Base64 encoding.
 func Base64Gzip(str cty.Value) (cty.Value, error) {
 	return Base64GzipFunc.Call([]cty.Value{str})
+}
+
+// Base64Gunzip decodes a Base64-encoded string and uncompresses the result with gzip.
+//
+// Opentofu uses the "standard" Base64 alphabet as defined in RFC 4648 section 4.
+func Base64Gunzip(str cty.Value) (cty.Value, error) {
+	return Base64GunzipFunc.Call([]cty.Value{str})
 }
 
 // URLEncode applies URL encoding to a given string.
@@ -240,12 +302,22 @@ func URLEncode(str cty.Value) (cty.Value, error) {
 	return URLEncodeFunc.Call([]cty.Value{str})
 }
 
+// URLDecode decodes a URL encoded string.
+//
+// This function decodes the given string that has been encoded.
+//
+// If the given string contains non-ASCII characters, these are first encoded as
+// UTF-8 and then percent decoding is applied separately to each UTF-8 byte.
+func URLDecode(str cty.Value) (cty.Value, error) {
+	return URLDecodeFunc.Call([]cty.Value{str})
+}
+
 // TextEncodeBase64 applies Base64 encoding to a string that was encoded before with a target encoding.
 //
-// OpenTF uses the "standard" Base64 alphabet as defined in RFC 4648 section 4.
+// OpenTofu uses the "standard" Base64 alphabet as defined in RFC 4648 section 4.
 //
 // First step is to apply the target IANA encoding (e.g. UTF-16LE).
-// Strings in the OpenTF language are sequences of unicode characters rather
+// Strings in the OpenTofu language are sequences of unicode characters rather
 // than bytes, so this function will first encode the characters from the string
 // as UTF-8, and then apply Base64 encoding to the result.
 func TextEncodeBase64(str, enc cty.Value) (cty.Value, error) {
@@ -254,9 +326,9 @@ func TextEncodeBase64(str, enc cty.Value) (cty.Value, error) {
 
 // TextDecodeBase64 decodes a string containing a base64 sequence whereas a specific encoding of the string is expected.
 //
-// OpenTF uses the "standard" Base64 alphabet as defined in RFC 4648 section 4.
+// OpenTofu uses the "standard" Base64 alphabet as defined in RFC 4648 section 4.
 //
-// Strings in the OpenTF language are sequences of unicode characters rather
+// Strings in the OpenTofu language are sequences of unicode characters rather
 // than bytes, so this function will also interpret the resulting bytes as
 // the target encoding.
 func TextDecodeBase64(str, enc cty.Value) (cty.Value, error) {

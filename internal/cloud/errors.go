@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package cloud
@@ -8,7 +10,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -40,7 +42,7 @@ var (
 	)
 )
 
-const ignoreRemoteVersionHelp = "If you're sure you want to upgrade the state, you can force OpenTF to continue using the -ignore-remote-version flag. This may result in an unusable workspace."
+const ignoreRemoteVersionHelp = "If you're sure you want to upgrade the state, you can force OpenTofu to continue using the -ignore-remote-version flag. This may result in an unusable workspace."
 
 func missingConfigAttributeAndEnvVar(attribute string, envVar string) tfdiags.Diagnostic {
 	detail := strings.TrimSpace(fmt.Sprintf("\"%s\" must be set in the cloud configuration or as an environment variable: %s.\n", attribute, envVar))
@@ -60,4 +62,13 @@ func incompatibleWorkspaceTerraformVersion(message string, ignoreVersionConflict
 	}
 	description := strings.TrimSpace(fmt.Sprintf("%s\n\n%s", message, suggestion))
 	return tfdiags.Sourceless(severity, "Incompatible TF version", description)
+}
+
+func invalidWorkspaceConfigInconsistentNameAndEnvVar() tfdiags.Diagnostic {
+	return tfdiags.AttributeValue(
+		tfdiags.Error,
+		"Invalid workspaces configuration",
+		fmt.Sprintf("The workspace defined using the environment variable \"TF_WORKSPACE\" is not consistent with the workspace \"name\" in the configuration.\n\n%s", workspaceConfigurationHelp),
+		cty.Path{cty.GetAttrStep{Name: "workspaces"}},
+	)
 }

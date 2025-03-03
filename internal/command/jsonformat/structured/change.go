@@ -1,17 +1,20 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package structured
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/structured/attribute_path"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonplan"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonstate"
-	viewsjson "github.com/placeholderplaceholderplaceholder/opentf/internal/command/views/json"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/structured/attribute_path"
+	"github.com/opentofu/opentofu/internal/command/jsonplan"
+	"github.com/opentofu/opentofu/internal/command/jsonstate"
+	viewsjson "github.com/opentofu/opentofu/internal/command/views/json"
+	"github.com/opentofu/opentofu/internal/plans"
 )
 
 // Change contains the unmarshalled generic interface{} types that are output by
@@ -264,8 +267,10 @@ func unmarshalGeneric(raw json.RawMessage) interface{} {
 		return nil
 	}
 
+	decoder := json.NewDecoder(bytes.NewBuffer(raw))
+	decoder.UseNumber()
 	var out interface{}
-	if err := json.Unmarshal(raw, &out); err != nil {
+	if err := decoder.Decode(&out); err != nil {
 		panic("unrecognized json type: " + err.Error())
 	}
 	return out

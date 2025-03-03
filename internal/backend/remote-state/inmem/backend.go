@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package inmem
@@ -11,11 +13,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/helper/schema"
-	statespkg "github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/remote"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/legacy/helper/schema"
+	statespkg "github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/remote"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
 )
 
 // we keep the states and locks in package-level variables, so that they can be
@@ -44,7 +47,7 @@ func Reset() {
 }
 
 // New creates a new backend for Inmem remote state.
-func New() backend.Backend {
+func New(enc encryption.StateEncryption) backend.Backend {
 	// Set the schema
 	s := &schema.Backend{
 		Schema: map[string]*schema.Schema{
@@ -55,13 +58,14 @@ func New() backend.Backend {
 			},
 		},
 	}
-	backend := &Backend{Backend: s}
+	backend := &Backend{Backend: s, encryption: enc}
 	backend.Backend.ConfigureFunc = backend.configure
 	return backend
 }
 
 type Backend struct {
 	*schema.Backend
+	encryption encryption.StateEncryption
 }
 
 func (b *Backend) configure(ctx context.Context) error {
@@ -72,9 +76,7 @@ func (b *Backend) configure(ctx context.Context) error {
 		Name: backend.DefaultStateName,
 	}
 
-	states.m[backend.DefaultStateName] = &remote.State{
-		Client: defaultClient,
-	}
+	states.m[backend.DefaultStateName] = remote.NewState(defaultClient, b.encryption)
 
 	// set the default client lock info per the test config
 	data := schema.FromContextBackendConfig(ctx)
@@ -122,11 +124,12 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 
 	s := states.m[name]
 	if s == nil {
-		s = &remote.State{
-			Client: &RemoteClient{
+		s = remote.NewState(
+			&RemoteClient{
 				Name: name,
 			},
-		}
+			b.encryption,
+		)
 		states.m[name] = s
 
 		// to most closely replicate other implementations, we are going to
@@ -135,7 +138,7 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 		lockInfo.Operation = "init"
 		lockID, err := s.Lock(lockInfo)
 		if err != nil {
-			return nil, fmt.Errorf("failed to lock inmem state: %s", err)
+			return nil, fmt.Errorf("failed to lock inmem state: %w", err)
 		}
 		defer s.Unlock(lockID)
 

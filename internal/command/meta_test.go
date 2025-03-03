@@ -1,11 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,9 +16,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/mitchellh/cli"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend/local"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/backend/local"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 func TestMetaColorize(t *testing.T) {
@@ -90,7 +91,7 @@ func TestMetaInputMode(t *testing.T) {
 		t.Fatalf("err: %s", err)
 	}
 
-	if m.InputMode() != opentf.InputModeStd {
+	if m.InputMode() != tofu.InputModeStd {
 		t.Fatalf("bad: %#v", m.InputMode())
 	}
 }
@@ -98,8 +99,6 @@ func TestMetaInputMode(t *testing.T) {
 func TestMetaInputMode_envVar(t *testing.T) {
 	test = false
 	defer func() { test = true }()
-	old := os.Getenv(InputModeEnvVar)
-	defer os.Setenv(InputModeEnvVar, old)
 
 	m := new(Meta)
 	args := []string{}
@@ -109,11 +108,11 @@ func TestMetaInputMode_envVar(t *testing.T) {
 		t.Fatalf("err: %s", err)
 	}
 
-	off := opentf.InputMode(0)
-	on := opentf.InputModeStd
+	off := tofu.InputMode(0)
+	on := tofu.InputModeStd
 	cases := []struct {
 		EnvVar   string
-		Expected opentf.InputMode
+		Expected tofu.InputMode
 	}{
 		{"false", off},
 		{"0", off},
@@ -122,7 +121,7 @@ func TestMetaInputMode_envVar(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		os.Setenv(InputModeEnvVar, tc.EnvVar)
+		t.Setenv(InputModeEnvVar, tc.EnvVar)
 		if m.InputMode() != tc.Expected {
 			t.Fatalf("expected InputMode: %#v, got: %#v", tc.Expected, m.InputMode())
 		}
@@ -220,10 +219,6 @@ func TestMeta_Env(t *testing.T) {
 }
 
 func TestMeta_Workspace_override(t *testing.T) {
-	defer func(value string) {
-		os.Setenv(WorkspaceNameEnvVar, value)
-	}(os.Getenv(WorkspaceNameEnvVar))
-
 	m := new(Meta)
 
 	testCases := map[string]struct {
@@ -246,7 +241,7 @@ func TestMeta_Workspace_override(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			os.Setenv(WorkspaceNameEnvVar, name)
+			t.Setenv(WorkspaceNameEnvVar, name)
 			workspace, err := m.Workspace()
 			if workspace != tc.workspace {
 				t.Errorf("Unexpected workspace\n got: %s\nwant: %s\n", workspace, tc.workspace)
@@ -275,7 +270,7 @@ func TestMeta_Workspace_invalidSelected(t *testing.T) {
 	if err := os.MkdirAll(DefaultDataDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := ioutil.WriteFile(filepath.Join(DefaultDataDir, local.DefaultWorkspaceFile), []byte(workspace), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(DefaultDataDir, local.DefaultWorkspaceFile), []byte(workspace), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -307,7 +302,7 @@ func TestMeta_process(t *testing.T) {
 	// they _aren't_ being interpreted by process, since that could otherwise
 	// cause them to be added more than once and mess up the precedence order.
 	defaultVarsfile := "terraform.tfvars"
-	err := ioutil.WriteFile(
+	err := os.WriteFile(
 		filepath.Join(d, defaultVarsfile),
 		[]byte(""),
 		0644)
@@ -315,7 +310,7 @@ func TestMeta_process(t *testing.T) {
 		t.Fatalf("err: %s", err)
 	}
 	fileFirstAlphabetical := "a-file.auto.tfvars"
-	err = ioutil.WriteFile(
+	err = os.WriteFile(
 		filepath.Join(d, fileFirstAlphabetical),
 		[]byte(""),
 		0644)
@@ -323,7 +318,7 @@ func TestMeta_process(t *testing.T) {
 		t.Fatalf("err: %s", err)
 	}
 	fileLastAlphabetical := "z-file.auto.tfvars"
-	err = ioutil.WriteFile(
+	err = os.WriteFile(
 		filepath.Join(d, fileLastAlphabetical),
 		[]byte(""),
 		0644)
@@ -332,7 +327,7 @@ func TestMeta_process(t *testing.T) {
 	}
 	// Regular tfvars files will not be autoloaded
 	fileIgnored := "ignored.tfvars"
-	err = ioutil.WriteFile(
+	err = os.WriteFile(
 		filepath.Join(d, fileIgnored),
 		[]byte(""),
 		0644)
