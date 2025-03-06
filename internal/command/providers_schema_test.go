@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -6,16 +8,16 @@ package command
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/mitchellh/cli"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/tofu"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -36,7 +38,7 @@ func TestProvidersSchema_error(t *testing.T) {
 
 func TestProvidersSchema_output(t *testing.T) {
 	fixtureDir := "testdata/providers-schema"
-	testDirs, err := ioutil.ReadDir(fixtureDir)
+	testDirs, err := os.ReadDir(fixtureDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +66,7 @@ func TestProvidersSchema_output(t *testing.T) {
 				ProviderSource:   providerSource,
 			}
 
-			// `terrafrom init`
+			// `terraform init`
 			ic := &InitCommand{
 				Meta: m,
 			}
@@ -75,7 +77,7 @@ func TestProvidersSchema_output(t *testing.T) {
 			// flush the init output from the mock ui
 			ui.OutputWriter.Reset()
 
-			// `terraform provider schemas` command
+			// `tofu provider schemas` command
 			pc := &ProvidersSchemaCommand{Meta: m}
 			if code := pc.Run([]string{"-json"}); code != 0 {
 				t.Fatalf("wrong exit status %d; want 0\nstderr: %s", code, ui.ErrorWriter.String())
@@ -90,7 +92,7 @@ func TestProvidersSchema_output(t *testing.T) {
 				t.Fatalf("err: %s", err)
 			}
 			defer wantFile.Close()
-			byteValue, err := ioutil.ReadAll(wantFile)
+			byteValue, err := io.ReadAll(wantFile)
 			if err != nil {
 				t.Fatalf("err: %s", err)
 			}
@@ -112,11 +114,12 @@ type providerSchema struct {
 	Provider          interface{}            `json:"provider,omitempty"`
 	ResourceSchemas   map[string]interface{} `json:"resource_schemas,omitempty"`
 	DataSourceSchemas map[string]interface{} `json:"data_source_schemas,omitempty"`
+	Functions         map[string]interface{} `json:"functions,omitempty"`
 }
 
 // testProvider returns a mock provider that is configured for basic
 // operation with the configuration in testdata/providers-schema.
-func providersSchemaFixtureProvider() *opentf.MockProvider {
+func providersSchemaFixtureProvider() *tofu.MockProvider {
 	p := testProvider()
 	p.GetProviderSchemaResponse = providersSchemaFixtureSchema()
 	return p
@@ -150,6 +153,21 @@ func providersSchemaFixtureSchema() *providers.GetProviderSchemaResponse {
 							Optional: true,
 						},
 					},
+				},
+			},
+		},
+		Functions: map[string]providers.FunctionSpec{
+			"test_func": {
+				Description: "a basic string function",
+				Return:      cty.String,
+				Summary:     "test",
+				Parameters: []providers.FunctionParameterSpec{{
+					Name: "input",
+					Type: cty.Number,
+				}},
+				VariadicParameter: &providers.FunctionParameterSpec{
+					Name: "variadic_input",
+					Type: cty.List(cty.Bool),
 				},
 			},
 		},

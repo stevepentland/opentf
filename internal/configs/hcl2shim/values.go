@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package hcl2shim
@@ -9,7 +11,7 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
 )
 
 // UnknownVariableValue is a sentinel value that can be used
@@ -32,7 +34,7 @@ const UnknownVariableValue = "74D93920-ED26-11E3-AC10-0800200C9A66"
 // function will panic or produce incorrect results.
 //
 // This is primarily useful for the final transition from new-style values to
-// opentf.ResourceConfig before calling to a legacy provider, since
+// tofu.ResourceConfig before calling to a legacy provider, since
 // helper/schema (the old provider SDK) is particularly sensitive to these
 // subtle differences within its validation code.
 func ConfigValueFromHCL2Block(v cty.Value, schema *configschema.Block) map[string]interface{} {

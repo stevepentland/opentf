@@ -1,11 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package backend
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 	"os/user"
 	"strings"
@@ -60,7 +61,7 @@ func TestReadPathOrContents_TildePath(t *testing.T) {
 
 func TestRead_PathNoPermission(t *testing.T) {
 	// This skip condition is intended to get this test out of the way of users
-	// who are building and testing OpenTF from within a Linux-based Docker
+	// who are building and testing OpenTofu from within a Linux-based Docker
 	// container, where it is common for processes to be running as effectively
 	// root within the container.
 	if u, err := user.Current(); err == nil && u.Uid == "0" {
@@ -121,7 +122,7 @@ func testTempFile(t *testing.T, baseDir ...string) (*os.File, func()) {
 	if len(baseDir) == 1 {
 		base = baseDir[0]
 	}
-	f, err := ioutil.TempFile(base, "tf")
+	f, err := os.CreateTemp(base, "tf")
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}

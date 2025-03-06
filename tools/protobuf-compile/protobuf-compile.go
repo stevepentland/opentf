@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 // protobuf-compile is a helper tool for running protoc against all of the
@@ -67,7 +69,7 @@ var protocSteps = []protocStep{
 
 func main() {
 	if len(os.Args) != 2 {
-		log.Fatal("Usage: go run github.com/placeholderplaceholderplaceholder/opentf/tools/protobuf-compile <basedir>")
+		log.Fatal("Usage: go run github.com/opentofu/opentofu/tools/protobuf-compile <basedir>")
 	}
 	baseDir := os.Args[1]
 	workDir := filepath.Join(baseDir, "tools/protobuf-compile/.workdir")

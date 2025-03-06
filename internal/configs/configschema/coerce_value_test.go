@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package configschema
@@ -8,7 +10,7 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 func TestCoerceValue(t *testing.T) {
@@ -610,7 +612,7 @@ func TestCoerceValue(t *testing.T) {
 
 			if gotErrObj == nil {
 				if test.WantErr != "" {
-					t.Fatalf("coersion succeeded; want error: %q", test.WantErr)
+					t.Fatalf("coercion succeeded; want error: %q", test.WantErr)
 				}
 			} else {
 				gotErr := tfdiags.FormatError(gotErrObj)

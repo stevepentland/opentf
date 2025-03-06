@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package cloud
@@ -25,13 +27,19 @@ import (
 	tfe "github.com/hashicorp/go-tfe"
 	uuid "github.com/hashicorp/go-uuid"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend/local"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonstate"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/remote"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/backend/local"
+	"github.com/opentofu/opentofu/internal/command/jsonstate"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/remote"
+	"github.com/opentofu/opentofu/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/tofu"
+)
+
+const (
+	// HeaderSnapshotInterval is the header key that controls the snapshot interval
+	HeaderSnapshotInterval = "x-terraform-snapshot-interval"
 )
 
 // State implements the State interfaces in the state package to handle
@@ -39,8 +47,6 @@ import (
 // local caching so every persist will go to the remote storage and local
 // writes will go to memory.
 type State struct {
-	mu sync.Mutex
-
 	// We track two pieces of meta data in addition to the state itself:
 	//
 	// lineage - the state's unique ID
@@ -52,6 +58,7 @@ type State struct {
 	// state has changed from an existing state we read in.
 	lineage, readLineage string
 	serial, readSerial   uint64
+	mu                   sync.Mutex
 	state, readState     *states.State
 	disableLocks         bool
 	tfeClient            *tfe.Client
@@ -72,11 +79,13 @@ type State struct {
 	// If the header X-Terraform-Snapshot-Interval is present then
 	// we will enable snapshots
 	enableIntermediateSnapshots bool
+
+	encryption encryption.StateEncryption
 }
 
 var ErrStateVersionUnauthorizedUpgradeState = errors.New(strings.TrimSpace(`
 You are not authorized to read the full state version containing outputs.
-State versions created by opentf v1.3.0 and newer do not require this level
+State versions created by tofu v1.3.0 and newer do not require this level
 of authorization and therefore this error can usually be fixed by upgrading the
 remote state version.
 `))
@@ -157,7 +166,7 @@ func (s *State) WriteState(state *states.State) error {
 }
 
 // PersistState uploads a snapshot of the latest state as a StateVersion to Terraform Cloud
-func (s *State) PersistState(schemas *opentf.Schemas) error {
+func (s *State) PersistState(schemas *tofu.Schemas) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -179,7 +188,7 @@ func (s *State) PersistState(schemas *opentf.Schemas) error {
 		// that we ought to be updating.
 		err := s.refreshState()
 		if err != nil {
-			return fmt.Errorf("failed checking for existing remote state: %s", err)
+			return fmt.Errorf("failed checking for existing remote state: %w", err)
 		}
 		log.Printf("[DEBUG] cloud/state: after refresh, state read serial is: %d; serial is: %d", s.readSerial, s.serial)
 		log.Printf("[DEBUG] cloud/state: after refresh, state read lineage is: %s; lineage is: %s", s.readLineage, s.lineage)
@@ -187,7 +196,7 @@ func (s *State) PersistState(schemas *opentf.Schemas) error {
 		if s.lineage == "" { // indicates that no state snapshot is present yet
 			lineage, err := uuid.GenerateUUID()
 			if err != nil {
-				return fmt.Errorf("failed to generate initial lineage: %v", err)
+				return fmt.Errorf("failed to generate initial lineage: %w", err)
 			}
 			s.lineage = lineage
 			s.serial++
@@ -197,7 +206,7 @@ func (s *State) PersistState(schemas *opentf.Schemas) error {
 	f := statefile.New(s.state, s.lineage, s.serial)
 
 	var buf bytes.Buffer
-	err := statefile.Write(f, &buf)
+	err := statefile.Write(f, &buf, s.encryption)
 	if err != nil {
 		return err
 	}
@@ -210,7 +219,7 @@ func (s *State) PersistState(schemas *opentf.Schemas) error {
 		}
 	}
 
-	stateFile, err := statefile.Read(bytes.NewReader(buf.Bytes()))
+	stateFile, err := statefile.Read(bytes.NewReader(buf.Bytes()), s.encryption)
 	if err != nil {
 		return fmt.Errorf("failed to read state: %w", err)
 	}
@@ -248,7 +257,9 @@ func (s *State) ShouldPersistIntermediateState(info *local.IntermediateStatePers
 		return true
 	}
 
-	if !s.enableIntermediateSnapshots && info.RequestedPersistInterval == time.Duration(0) {
+	// This value is controlled by a x-terraform-snapshot-interval header intercepted during
+	// state-versions API responses
+	if !s.enableIntermediateSnapshots {
 		return false
 	}
 
@@ -338,12 +349,12 @@ func (s *State) Lock(info *statemgr.LockInfo) (string, error) {
 
 	// Lock the workspace.
 	_, err := s.tfeClient.Workspaces.Lock(ctx, s.workspace.ID, tfe.WorkspaceLockOptions{
-		Reason: tfe.String("Locked by OpenTF"),
+		Reason: tfe.String("Locked by OpenTofu"),
 	})
 	if err != nil {
 		if err == tfe.ErrWorkspaceLocked {
 			lockErr.Info = info
-			err = fmt.Errorf("%s (lock ID: \"%s/%s\")", err, s.organization, s.workspace.Name)
+			err = fmt.Errorf("%w (lock ID: \"%s/%s\")", err, s.organization, s.workspace.Name)
 		}
 		lockErr.Err = err
 		return "", lockErr
@@ -378,7 +389,7 @@ func (s *State) refreshState() error {
 		return nil
 	}
 
-	stateFile, err := statefile.Read(bytes.NewReader(payload.Data))
+	stateFile, err := statefile.Read(bytes.NewReader(payload.Data), s.encryption)
 	if err != nil {
 		return err
 	}
@@ -408,12 +419,12 @@ func (s *State) getStatePayload() (*remote.Payload, error) {
 			// If no state exists, then return nil.
 			return nil, nil
 		}
-		return nil, fmt.Errorf("error retrieving state: %v", err)
+		return nil, fmt.Errorf("error retrieving state: %w", err)
 	}
 
 	state, err := s.tfeClient.StateVersions.Download(ctx, sv.DownloadURL)
 	if err != nil {
-		return nil, fmt.Errorf("error downloading state: %v", err)
+		return nil, fmt.Errorf("error downloading state: %w", err)
 	}
 
 	// If the state is empty, then return nil.
@@ -502,7 +513,7 @@ func (s *State) Delete(force bool) error {
 	}
 
 	if err != nil && err != tfe.ErrResourceNotFound {
-		return fmt.Errorf("error deleting workspace %s: %v", s.workspace.Name, err)
+		return fmt.Errorf("error deleting workspace %s: %w", s.workspace.Name, err)
 	}
 
 	return nil
@@ -577,7 +588,14 @@ func clamp(val, min, max int64) int64 {
 }
 
 func (s *State) readSnapshotIntervalHeader(status int, header http.Header) {
-	intervalStr := header.Get("x-terraform-snapshot-interval")
+	// Only proceed if this came from tfe.v2 API
+	contentType := header.Get("Content-Type")
+	if !strings.Contains(contentType, tfe.ContentTypeJSONAPI) {
+		log.Printf("[TRACE] Skipping intermediate state interval because Content-Type was %q", contentType)
+		return
+	}
+
+	intervalStr := header.Get(HeaderSnapshotInterval)
 
 	if intervalSecs, err := strconv.ParseInt(intervalStr, 10, 64); err == nil {
 		// More than an hour is an unreasonable delay, so we'll just
@@ -588,16 +606,17 @@ func (s *State) readSnapshotIntervalHeader(status int, header http.Header) {
 		// If the header field is either absent or invalid then we'll
 		// just choose zero, which effectively means that we'll just use
 		// the caller's requested interval instead. If the caller has no
-		// requested interval or it is zero, then we will disable snapshots.
+		// requested interval, or it is zero, then we will disable snapshots.
 		s.stateSnapshotInterval = time.Duration(0)
 	}
 
 	// We will only enable snapshots for intervals greater than zero
+	log.Printf("[TRACE] Intermediate state interval is set by header to %v", s.stateSnapshotInterval)
 	s.enableIntermediateSnapshots = s.stateSnapshotInterval > 0
 }
 
 // tfeOutputToCtyValue decodes a combination of TFE output value and detailed-type to create a
-// cty value that is suitable for use in terraform.
+// cty value that is suitable for use in tofu.
 func tfeOutputToCtyValue(output tfe.StateVersionOutput) (cty.Value, error) {
 	var result cty.Value
 	bufType, err := json.Marshal(output.DetailedType)

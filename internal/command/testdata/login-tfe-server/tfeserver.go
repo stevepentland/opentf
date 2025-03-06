@@ -1,5 +1,5 @@
 // Package tfeserver is a test stub implementing a subset of the TFE API used
-// only for the testing of the "terraform login" command.
+// only for the testing of the "tofu login" command.
 package tfeserver
 
 import (
@@ -11,14 +11,14 @@ import (
 const (
 	goodToken      = "good-token"
 	accountDetails = `{"data":{"id":"user-abc123","type":"users","attributes":{"username":"testuser","email":"testuser@example.com"}}}`
-	MOTD           = `{"msg":"Welcome to Terraform Cloud!"}`
+	MOTD           = `{"msg":"Welcome to the cloud backend!"}`
 )
 
 // Handler is an implementation of net/http.Handler that provides a stub
 // TFE API server implementation with the following endpoints:
 //
-//     /ping            - API existence endpoint
-//     /account/details - current user endpoint
+//	/ping            - API existence endpoint
+//	/account/details - current user endpoint
 var Handler http.Handler
 
 type handler struct{}

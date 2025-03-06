@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 // Package init contains the list of backends that can be initialized and
@@ -9,33 +11,34 @@ import (
 	"sync"
 
 	"github.com/hashicorp/terraform-svchost/disco"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 	"github.com/zclconf/go-cty/cty"
 
-	backendLocal "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/local"
-	backendRemote "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote"
-	backendAzure "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/azure"
-	backendConsul "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/consul"
-	backendCos "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/cos"
-	backendGCS "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/gcs"
-	backendHTTP "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/http"
-	backendInmem "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/inmem"
-	backendKubernetes "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/kubernetes"
-	backendOSS "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/oss"
-	backendPg "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/pg"
-	backendS3 "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/s3"
-	backendCloud "github.com/placeholderplaceholderplaceholder/opentf/internal/cloud"
+	backendLocal "github.com/opentofu/opentofu/internal/backend/local"
+	backendRemote "github.com/opentofu/opentofu/internal/backend/remote"
+	backendAzure "github.com/opentofu/opentofu/internal/backend/remote-state/azure"
+	backendConsul "github.com/opentofu/opentofu/internal/backend/remote-state/consul"
+	backendCos "github.com/opentofu/opentofu/internal/backend/remote-state/cos"
+	backendGCS "github.com/opentofu/opentofu/internal/backend/remote-state/gcs"
+	backendHTTP "github.com/opentofu/opentofu/internal/backend/remote-state/http"
+	backendInmem "github.com/opentofu/opentofu/internal/backend/remote-state/inmem"
+	backendKubernetes "github.com/opentofu/opentofu/internal/backend/remote-state/kubernetes"
+	backendOSS "github.com/opentofu/opentofu/internal/backend/remote-state/oss"
+	backendPg "github.com/opentofu/opentofu/internal/backend/remote-state/pg"
+	backendS3 "github.com/opentofu/opentofu/internal/backend/remote-state/s3"
+	backendCloud "github.com/opentofu/opentofu/internal/cloud"
 )
 
 // backends is the list of available backends. This is a global variable
-// because backends are currently hardcoded into OpenTF and can't be
+// because backends are currently hardcoded into OpenTofu and can't be
 // modified without recompilation.
 //
 // To read an available backend, use the Backend function. This ensures
 // safe concurrent read access to the list of built-in backends.
 //
-// Backends are hardcoded into OpenTF because the API for backends uses
+// Backends are hardcoded into OpenTofu because the API for backends uses
 // complex structures and supporting that over the plugin system is currently
 // prohibitively difficult. For those wanting to implement a custom backend,
 // they can do so with recompilation.
@@ -51,34 +54,38 @@ func Init(services *disco.Disco) {
 	backendsLock.Lock()
 	defer backendsLock.Unlock()
 
+	// NOTE: Underscore-prefixed named are reserved for unit testing use via
+	// the RegisterTemp function. Do not add any underscore-prefixed names
+	// to the following table.
+
 	backends = map[string]backend.InitFn{
-		"local":  func() backend.Backend { return backendLocal.New() },
-		"remote": func() backend.Backend { return backendRemote.New(services) },
+		"local":  func(enc encryption.StateEncryption) backend.Backend { return backendLocal.New(enc) },
+		"remote": func(enc encryption.StateEncryption) backend.Backend { return backendRemote.New(services, enc) },
 
 		// Remote State backends.
-		"azurerm":    func() backend.Backend { return backendAzure.New() },
-		"consul":     func() backend.Backend { return backendConsul.New() },
-		"cos":        func() backend.Backend { return backendCos.New() },
-		"gcs":        func() backend.Backend { return backendGCS.New() },
-		"http":       func() backend.Backend { return backendHTTP.New() },
-		"inmem":      func() backend.Backend { return backendInmem.New() },
-		"kubernetes": func() backend.Backend { return backendKubernetes.New() },
-		"oss":        func() backend.Backend { return backendOSS.New() },
-		"pg":         func() backend.Backend { return backendPg.New() },
-		"s3":         func() backend.Backend { return backendS3.New() },
+		"azurerm":    func(enc encryption.StateEncryption) backend.Backend { return backendAzure.New(enc) },
+		"consul":     func(enc encryption.StateEncryption) backend.Backend { return backendConsul.New(enc) },
+		"cos":        func(enc encryption.StateEncryption) backend.Backend { return backendCos.New(enc) },
+		"gcs":        func(enc encryption.StateEncryption) backend.Backend { return backendGCS.New(enc) },
+		"http":       func(enc encryption.StateEncryption) backend.Backend { return backendHTTP.New(enc) },
+		"inmem":      func(enc encryption.StateEncryption) backend.Backend { return backendInmem.New(enc) },
+		"kubernetes": func(enc encryption.StateEncryption) backend.Backend { return backendKubernetes.New(enc) },
+		"oss":        func(enc encryption.StateEncryption) backend.Backend { return backendOSS.New(enc) },
+		"pg":         func(enc encryption.StateEncryption) backend.Backend { return backendPg.New(enc) },
+		"s3":         func(enc encryption.StateEncryption) backend.Backend { return backendS3.New(enc) },
 
 		// Terraform Cloud 'backend'
 		// This is an implementation detail only, used for the cloud package
-		"cloud": func() backend.Backend { return backendCloud.New(services) },
+		"cloud": func(enc encryption.StateEncryption) backend.Backend { return backendCloud.New(services, enc) },
 	}
 
 	RemovedBackends = map[string]string{
-		"artifactory": `The "artifactory" backend is not supported in OpenTF v1.3 or later.`,
+		"artifactory": `The "artifactory" backend is not supported in OpenTofu v1.3 or later.`,
 		"azure":       `The "azure" backend name has been removed, please use "azurerm".`,
-		"etcd":        `The "etcd" backend is not supported in OpenTF v1.3 or later.`,
-		"etcdv3":      `The "etcdv3" backend is not supported in OpenTF v1.3 or later.`,
-		"manta":       `The "manta" backend is not supported in OpenTF v1.3 or later.`,
-		"swift":       `The "swift" backend is not supported in OpenTF v1.3 or later.`,
+		"etcd":        `The "etcd" backend is not supported in OpenTofu v1.3 or later.`,
+		"etcdv3":      `The "etcdv3" backend is not supported in OpenTofu v1.3 or later.`,
+		"manta":       `The "manta" backend is not supported in OpenTofu v1.3 or later.`,
+		"swift":       `The "swift" backend is not supported in OpenTofu v1.3 or later.`,
 	}
 }
 
@@ -95,8 +102,12 @@ func Backend(name string) backend.InitFn {
 // then it will be overwritten.
 //
 // This method sets this backend globally and care should be taken to do
-// this only before OpenTF is executing to prevent odd behavior of backends
+// this only before OpenTofu is executing to prevent odd behavior of backends
 // changing mid-execution.
+//
+// NOTE: Underscore-prefixed named are reserved for unit testing use via
+// the RegisterTemp function. Do not add any underscore-prefixed names
+// using this function.
 func Set(name string, f backend.InitFn) {
 	backendsLock.Lock()
 	defer backendsLock.Unlock()
@@ -123,7 +134,7 @@ func (b deprecatedBackendShim) PrepareConfig(obj cty.Value) (cty.Value, tfdiags.
 	return newObj, diags.Append(tfdiags.SimpleWarning(b.Message))
 }
 
-// DeprecateBackend can be used to wrap a backend to retrun a deprecation
+// DeprecateBackend can be used to wrap a backend to return a deprecation
 // warning during validation.
 func deprecateBackend(b backend.Backend, message string) backend.Backend {
 	// Since a Backend wrapped by deprecatedBackendShim can no longer be

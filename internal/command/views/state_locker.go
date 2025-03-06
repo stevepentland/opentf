@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -8,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/arguments"
 )
 
 // The StateLocker view is used to display locking/unlocking status messages
@@ -59,7 +61,7 @@ func (v *StateLockerJSON) Locking() {
 	json_data := map[string]string{
 		"@level":     "info",
 		"@message":   "Acquiring state lock. This may take a few moments...",
-		"@module":    "opentf.ui",
+		"@module":    "tofu.ui",
 		"@timestamp": current_timestamp,
 		"type":       "state_lock_acquire"}
 
@@ -73,7 +75,7 @@ func (v *StateLockerJSON) Unlocking() {
 	json_data := map[string]string{
 		"@level":     "info",
 		"@message":   "Releasing state lock. This may take a few moments...",
-		"@module":    "opentf.ui",
+		"@module":    "tofu.ui",
 		"@timestamp": current_timestamp,
 		"type":       "state_lock_release"}
 

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package schema
@@ -11,7 +13,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/helper/hashcode"
+	"github.com/opentofu/opentofu/internal/legacy/helper/hashcode"
 )
 
 // HashString hashes strings. If you want a Set of strings, this is the

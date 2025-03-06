@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package schema
@@ -10,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/opentf"
+	"github.com/opentofu/opentofu/internal/legacy/tofu"
 )
 
 // newValueWriter is a minor re-implementation of MapFieldWriter to include
@@ -19,12 +21,11 @@ import (
 type newValueWriter struct {
 	*MapFieldWriter
 
-	// A list of keys that should be marked as computed.
-	computedKeys map[string]bool
-
 	// A lock to prevent races on writes. The underlying writer will have one as
 	// well - this is for computed keys.
 	lock sync.Mutex
+	// A list of keys that should be marked as computed.
+	computedKeys map[string]bool
 
 	// To be used with init.
 	once sync.Once
@@ -116,16 +117,16 @@ type ResourceDiff struct {
 	schema map[string]*Schema
 
 	// The current config for this resource.
-	config *opentf.ResourceConfig
+	config *tofu.ResourceConfig
 
 	// The state for this resource as it exists post-refresh, after the initial
 	// diff.
-	state *opentf.InstanceState
+	state *tofu.InstanceState
 
-	// The diff created by Terraform. This diff is used, along with state,
+	// The diff created by Tofu. This diff is used, along with state,
 	// config, and custom-set diff data, to provide a multi-level reader
 	// experience similar to ResourceData.
-	diff *opentf.InstanceDiff
+	diff *tofu.InstanceDiff
 
 	// The internal reader structure that contains the state, config, the default
 	// diff, and the new diff.
@@ -145,7 +146,7 @@ type ResourceDiff struct {
 }
 
 // newResourceDiff creates a new ResourceDiff instance.
-func newResourceDiff(schema map[string]*Schema, config *opentf.ResourceConfig, state *opentf.InstanceState, diff *opentf.InstanceDiff) *ResourceDiff {
+func newResourceDiff(schema map[string]*Schema, config *tofu.ResourceConfig, state *tofu.InstanceState, diff *tofu.InstanceDiff) *ResourceDiff {
 	d := &ResourceDiff{
 		config: config,
 		state:  state,
@@ -316,7 +317,7 @@ func (d *ResourceDiff) setDiff(key string, new interface{}, computed bool) error
 	}
 
 	if err := d.newWriter.WriteField(strings.Split(key, "."), new, computed); err != nil {
-		return fmt.Errorf("Cannot set new diff value for key %s: %s", key, err)
+		return fmt.Errorf("Cannot set new diff value for key %s: %w", key, err)
 	}
 
 	d.updatedKeys[key] = true

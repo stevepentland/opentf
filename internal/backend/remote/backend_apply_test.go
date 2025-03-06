@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package remote
@@ -17,20 +19,20 @@ import (
 	version "github.com/hashicorp/go-version"
 	"github.com/mitchellh/cli"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/cloud"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/clistate"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/depsfile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/initwd"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans/planfile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
-	tfversion "github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/cloud"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/clistate"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/depsfile"
+	"github.com/opentofu/opentofu/internal/initwd"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/plans/planfile"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/terminal"
+	"github.com/opentofu/opentofu/internal/tofu"
+	tfversion "github.com/opentofu/opentofu/version"
 )
 
 func testOperationApply(t *testing.T, configDir string) (*backend.Operation, func(), func(*testing.T) *terminal.TestOutput) {
@@ -52,7 +54,7 @@ func testOperationApplyWithTimeout(t *testing.T, configDir string, timeout time.
 	// Many of our tests use an overridden "null" provider that's just in-memory
 	// inside the test process, not a separate plugin on disk.
 	depLocks := depsfile.NewLocks()
-	depLocks.SetProviderOverridden(addrs.MustParseProviderSourceString("registry.terraform.io/hashicorp/null"))
+	depLocks.SetProviderOverridden(addrs.MustParseProviderSourceString("registry.opentofu.org/hashicorp/null"))
 
 	return &backend.Operation{
 		ConfigDir:       configDir,
@@ -235,7 +237,7 @@ func TestRemote_applyWithParallelism(t *testing.T) {
 	defer configCleanup()
 
 	if b.ContextOpts == nil {
-		b.ContextOpts = &opentf.ContextOpts{}
+		b.ContextOpts = &tofu.ContextOpts{}
 	}
 	b.ContextOpts.Parallelism = 3
 	op.Workspace = backend.DefaultStateName
@@ -464,6 +466,45 @@ func TestRemote_applyWithTarget(t *testing.T) {
 	}
 }
 
+// Applying with an exclude flag should error
+func TestRemote_applyWithExclude(t *testing.T) {
+	b, bCleanup := testBackendDefault(t)
+	defer bCleanup()
+
+	op, configCleanup, done := testOperationApply(t, "./testdata/apply")
+	defer configCleanup()
+
+	addr, _ := addrs.ParseAbsResourceStr("null_resource.foo")
+
+	op.Workspace = backend.DefaultStateName
+	op.Excludes = []addrs.Targetable{addr}
+
+	run, err := b.Operation(context.Background(), op)
+	if err != nil {
+		t.Fatalf("error starting operation: %v", err)
+	}
+
+	<-run.Done()
+	output := done(t)
+	if run.Result == backend.OperationSuccess {
+		t.Fatal("expected apply operation to fail")
+	}
+	if !run.PlanEmpty {
+		t.Fatalf("expected plan to be empty")
+	}
+
+	errOutput := output.Stderr()
+	if !strings.Contains(errOutput, "-exclude option is not supported") {
+		t.Fatalf("expected -exclude option is not supported error, got: %v", errOutput)
+	}
+
+	stateMgr, _ := b.StateMgr(backend.DefaultStateName)
+	// An error suggests that the state was not unlocked after apply
+	if _, err := stateMgr.Lock(statemgr.NewLockInfo()); err != nil {
+		t.Fatalf("unexpected error locking state after failed apply: %s", err.Error())
+	}
+}
+
 func TestRemote_applyWithTargetIncompatibleAPIVersion(t *testing.T) {
 	b, bCleanup := testBackendDefault(t)
 	defer bCleanup()
@@ -580,7 +621,7 @@ func TestRemote_applyWithVariables(t *testing.T) {
 	op, configCleanup, done := testOperationApply(t, "./testdata/apply-variables")
 	defer configCleanup()
 
-	op.Variables = testVariables(opentf.ValueFromNamedFile, "foo", "bar")
+	op.Variables = testVariables(tofu.ValueFromNamedFile, "foo", "bar")
 	op.Workspace = backend.DefaultStateName
 
 	run, err := b.Operation(context.Background(), op)
@@ -961,10 +1002,7 @@ func TestRemote_applyWithAutoApply(t *testing.T) {
 func TestRemote_applyForceLocal(t *testing.T) {
 	// Set TF_FORCE_LOCAL_BACKEND so the remote backend will use
 	// the local backend with itself as embedded backend.
-	if err := os.Setenv("TF_FORCE_LOCAL_BACKEND", "1"); err != nil {
-		t.Fatalf("error setting environment variable TF_FORCE_LOCAL_BACKEND: %v", err)
-	}
-	defer os.Unsetenv("TF_FORCE_LOCAL_BACKEND")
+	t.Setenv("TF_FORCE_LOCAL_BACKEND", "1")
 
 	b, bCleanup := testBackendDefault(t)
 	defer bCleanup()
@@ -1141,7 +1179,7 @@ func TestRemote_applyLockTimeout(t *testing.T) {
 		t.Fatalf("expected remote backend header in output: %s", output)
 	}
 	if !strings.Contains(output, "Lock timeout exceeded") {
-		t.Fatalf("expected lock timout error in output: %s", output)
+		t.Fatalf("expected lock timeout error in output: %s", output)
 	}
 	if strings.Contains(output, "1 to add, 0 to change, 0 to destroy") {
 		t.Fatalf("unexpected plan summery in output: %s", output)
@@ -1409,7 +1447,7 @@ func TestRemote_applyPolicySoftFailAutoApproveSuccess(t *testing.T) {
 	}
 
 	if run.PlanEmpty {
-		t.Fatalf("expected plan to not be empty, plan opertion completed without error")
+		t.Fatalf("expected plan to not be empty, plan operation completed without error")
 	}
 
 	if len(input.answers) != 0 {
@@ -1423,7 +1461,7 @@ func TestRemote_applyPolicySoftFailAutoApproveSuccess(t *testing.T) {
 
 	output := b.CLI.(*cli.MockUi).OutputWriter.String()
 	if !strings.Contains(output, "Sentinel Result: false") {
-		t.Fatalf("expected policy check to be false, insead got: %s", output)
+		t.Fatalf("expected policy check to be false, instead got: %s", output)
 	}
 	if !strings.Contains(output, "Apply complete!") {
 		t.Fatalf("expected apply to be complete, instead got: %s", output)

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package configs
@@ -9,7 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hcltest"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 )
 
 func TestMovedBlock_decode(t *testing.T) {
@@ -174,7 +176,7 @@ func TestMovedBlock_decode(t *testing.T) {
 
 func TestMovedBlock_inModule(t *testing.T) {
 	parser := NewParser(nil)
-	mod, diags := parser.LoadConfigDir("testdata/valid-modules/moved-blocks")
+	mod, diags := parser.LoadConfigDir("testdata/valid-modules/moved-blocks", RootModuleCallForTesting())
 	if diags.HasErrors() {
 		t.Errorf("unexpected error: %s", diags.Error())
 	}

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package pg
@@ -6,10 +8,10 @@ package pg
 import (
 	"fmt"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/remote"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/remote"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
 )
 
 func (b *Backend) Workspaces() ([]string, error) {
@@ -54,13 +56,14 @@ func (b *Backend) DeleteWorkspace(name string, _ bool) error {
 
 func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 	// Build the state client
-	var stateMgr statemgr.Full = &remote.State{
-		Client: &RemoteClient{
+	var stateMgr statemgr.Full = remote.NewState(
+		&RemoteClient{
 			Client:     b.db,
 			Name:       name,
 			SchemaName: b.schemaName,
 		},
-	}
+		b.encryption,
+	)
 
 	// Check to see if this state already exists.
 	// If the state doesn't exist, we have to assume this
@@ -86,13 +89,13 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 		lockInfo.Operation = "init"
 		lockId, err := stateMgr.Lock(lockInfo)
 		if err != nil {
-			return nil, fmt.Errorf("failed to lock state in Postgres: %s", err)
+			return nil, fmt.Errorf("failed to lock state in Postgres: %w", err)
 		}
 
 		// Local helper function so we can call it multiple places
 		lockUnlock := func(parent error) error {
 			if err := stateMgr.Unlock(lockId); err != nil {
-				return fmt.Errorf(`error unlocking Postgres state: %s`, err)
+				return fmt.Errorf("error unlocking Postgres state: %w", err)
 			}
 			return parent
 		}
