@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package azure
@@ -17,8 +19,8 @@ import (
 	"github.com/hashicorp/go-azure-helpers/authentication"
 	"github.com/hashicorp/go-azure-helpers/sender"
 	"github.com/manicminer/hamilton/environments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/httpclient"
-	"github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/httpclient"
+	"github.com/opentofu/opentofu/version"
 	"github.com/tombuildsstuff/giovanni/storage/2018-11-09/blob/blobs"
 	"github.com/tombuildsstuff/giovanni/storage/2018-11-09/blob/containers"
 )
@@ -38,6 +40,7 @@ type ArmClient struct {
 	resourceGroupName  string
 	storageAccountName string
 	sasToken           string
+	timeoutSeconds     int
 }
 
 func buildArmClient(ctx context.Context, config BackendConfig) (*ArmClient, error) {
@@ -50,6 +53,7 @@ func buildArmClient(ctx context.Context, config BackendConfig) (*ArmClient, erro
 		environment:        *env,
 		resourceGroupName:  config.ResourceGroupName,
 		storageAccountName: config.StorageAccountName,
+		timeoutSeconds:     config.TimeoutSeconds,
 	}
 
 	// if we have an Access Key - we don't need the other clients
@@ -71,7 +75,7 @@ func buildArmClient(ctx context.Context, config BackendConfig) (*ArmClient, erro
 		CustomResourceManagerEndpoint: config.CustomResourceManagerEndpoint,
 		MetadataHost:                  config.MetadataHost,
 		Environment:                   config.Environment,
-		ClientSecretDocsLink:          "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/guides/service_principal_client_secret",
+		ClientSecretDocsLink:          "https://registry.opentofu.org/providers/hashicorp/azurerm/latest/docs/guides/service_principal_client_secret",
 
 		// Service Principal (Client Certificate)
 		ClientCertPassword: config.ClientCertificatePassword,
@@ -99,7 +103,7 @@ func buildArmClient(ctx context.Context, config BackendConfig) (*ArmClient, erro
 	}
 	armConfig, err := builder.Build()
 	if err != nil {
-		return nil, fmt.Errorf("Error building ARM Config: %+v", err)
+		return nil, fmt.Errorf("Error building ARM Config: %w", err)
 	}
 
 	oauthConfig, err := armConfig.BuildOAuthConfig(env.ActiveDirectoryEndpoint)
@@ -144,7 +148,7 @@ func (c ArmClient) getBlobClient(ctx context.Context) (*blobs.Client, error) {
 		log.Printf("[DEBUG] Building the Blob Client from a SAS Token")
 		storageAuth, err := autorest.NewSASTokenAuthorizer(c.sasToken)
 		if err != nil {
-			return nil, fmt.Errorf("Error building Authorizer: %+v", err)
+			return nil, fmt.Errorf("Error building SAS Token Authorizer: %w", err)
 		}
 
 		blobsClient := blobs.NewWithEnvironment(c.environment)
@@ -161,9 +165,11 @@ func (c ArmClient) getBlobClient(ctx context.Context) (*blobs.Client, error) {
 	accessKey := c.accessKey
 	if accessKey == "" {
 		log.Printf("[DEBUG] Building the Blob Client from an Access Token (using user credentials)")
-		keys, err := c.storageAccountsClient.ListKeys(ctx, c.resourceGroupName, c.storageAccountName, "")
+		timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(c.timeoutSeconds)*time.Second)
+		defer cancel()
+		keys, err := c.storageAccountsClient.ListKeys(timeoutCtx, c.resourceGroupName, c.storageAccountName, "")
 		if err != nil {
-			return nil, fmt.Errorf("Error retrieving keys for Storage Account %q: %s", c.storageAccountName, err)
+			return nil, fmt.Errorf("Error retrieving keys for Storage Account %q: %w", c.storageAccountName, err)
 		}
 
 		if keys.Keys == nil {
@@ -176,7 +182,7 @@ func (c ArmClient) getBlobClient(ctx context.Context) (*blobs.Client, error) {
 
 	storageAuth, err := autorest.NewSharedKeyAuthorizer(c.storageAccountName, accessKey, autorest.SharedKey)
 	if err != nil {
-		return nil, fmt.Errorf("Error building Authorizer: %+v", err)
+		return nil, fmt.Errorf("Error building Shared Key Authorizer: %w", err)
 	}
 
 	blobsClient := blobs.NewWithEnvironment(c.environment)
@@ -189,7 +195,7 @@ func (c ArmClient) getContainersClient(ctx context.Context) (*containers.Client,
 		log.Printf("[DEBUG] Building the Container Client from a SAS Token")
 		storageAuth, err := autorest.NewSASTokenAuthorizer(c.sasToken)
 		if err != nil {
-			return nil, fmt.Errorf("Error building Authorizer: %+v", err)
+			return nil, fmt.Errorf("Error building SAS Token Authorizer: %w", err)
 		}
 
 		containersClient := containers.NewWithEnvironment(c.environment)
@@ -206,9 +212,11 @@ func (c ArmClient) getContainersClient(ctx context.Context) (*containers.Client,
 	accessKey := c.accessKey
 	if accessKey == "" {
 		log.Printf("[DEBUG] Building the Container Client from an Access Token (using user credentials)")
-		keys, err := c.storageAccountsClient.ListKeys(ctx, c.resourceGroupName, c.storageAccountName, "")
+		timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(c.timeoutSeconds)*time.Second)
+		defer cancel()
+		keys, err := c.storageAccountsClient.ListKeys(timeoutCtx, c.resourceGroupName, c.storageAccountName, "")
 		if err != nil {
-			return nil, fmt.Errorf("Error retrieving keys for Storage Account %q: %s", c.storageAccountName, err)
+			return nil, fmt.Errorf("Error retrieving keys for Storage Account %q: %w", c.storageAccountName, err)
 		}
 
 		if keys.Keys == nil {
@@ -221,7 +229,7 @@ func (c ArmClient) getContainersClient(ctx context.Context) (*containers.Client,
 
 	storageAuth, err := autorest.NewSharedKeyAuthorizer(c.storageAccountName, accessKey, autorest.SharedKey)
 	if err != nil {
-		return nil, fmt.Errorf("Error building Authorizer: %+v", err)
+		return nil, fmt.Errorf("Error building Shared Key Authorizer: %w", err)
 	}
 
 	containersClient := containers.NewWithEnvironment(c.environment)
@@ -238,7 +246,7 @@ func (c *ArmClient) configureClient(client *autorest.Client, auth autorest.Autho
 }
 
 func buildUserAgent() string {
-	userAgent := httpclient.OpenTfUserAgent(version.Version)
+	userAgent := httpclient.OpenTofuUserAgent(version.Version)
 
 	// append the CloudShell version to the user agent if it exists
 	if azureAgent := os.Getenv("AZURE_HTTP_USER_AGENT"); azureAgent != "" {

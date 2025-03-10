@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package consul
@@ -18,8 +20,8 @@ import (
 
 	consulapi "github.com/hashicorp/consul/api"
 	multierror "github.com/hashicorp/go-multierror"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/remote"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/states/remote"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
 )
 
 const (
@@ -40,11 +42,11 @@ var lostLockErr = errors.New("consul lock was lost")
 
 // RemoteClient is a remote client that stores data in Consul.
 type RemoteClient struct {
-	Client *consulapi.Client
-	Path   string
-	GZip   bool
+	Path string
+	GZip bool
 
-	mu sync.Mutex
+	mu     sync.Mutex
+	Client *consulapi.Client
 	// lockState is true if we're using locks
 	lockState bool
 
@@ -128,7 +130,7 @@ func (c *RemoteClient) Put(data []byte) error {
 	// and whether the user enabled gzip:
 	//  - single entry mode with plain JSON: a single JSON is stored at
 	//	  "tfstate/my_project"
-	//  - single entry mode gzip: the JSON payload is first gziped and stored at
+	//  - single entry mode gzip: the JSON payload is first gzipped and stored at
 	//    "tfstate/my_project"
 	//  - chunked mode with plain JSON: the JSON payload is split in pieces and
 	//    stored like so:
@@ -145,10 +147,10 @@ func (c *RemoteClient) Put(data []byte) error {
 	//       - "tfstate/my_project/tfstate.abcdef1234/0" -> The first chunk
 	//       - "tfstate/my_project/tfstate.abcdef1234/1" -> The next one
 	//       - ...
-	//  - chunked mode with gzip: the same system but we gziped the JSON payload
+	//  - chunked mode with gzip: the same system but we gzipped the JSON payload
 	//    before splitting it in chunks
 	//
-	// When overwritting the current state, we need to clean the old chunks if
+	// When overwriting the current state, we need to clean the old chunks if
 	// we were in chunked mode (no matter whether we need to use chunks for the
 	// new one). To do so based on the 4 possibilities above we look at the
 	// value at "tfstate/my_project" and if it is:
@@ -347,7 +349,7 @@ func (c *RemoteClient) getLockInfo() (*statemgr.LockInfo, error) {
 	li := &statemgr.LockInfo{}
 	err = json.Unmarshal(pair.Value, li)
 	if err != nil {
-		return nil, fmt.Errorf("error unmarshaling lock info: %s", err)
+		return nil, fmt.Errorf("error unmarshaling lock info: %w", err)
 	}
 
 	return li, nil
@@ -364,7 +366,7 @@ func (c *RemoteClient) Lock(info *statemgr.LockInfo) (string, error) {
 	c.info = info
 
 	// These checks only are to ensure we strictly follow the specification.
-	// OpenTF shouldn't ever re-lock, so provide errors for the 2 possible
+	// OpenTofu shouldn't ever re-lock, so provide errors for the 2 possible
 	// states if this is called.
 	select {
 	case <-c.lockCh:
@@ -402,7 +404,7 @@ func (c *RemoteClient) lock() (string, error) {
 		Key:     c.lockPath() + lockSuffix,
 		Session: lockSession,
 
-		// only wait briefly, so opentf has the choice to fail fast or
+		// only wait briefly, so tofu has the choice to fail fast or
 		// retry as needed.
 		LockWaitTime: time.Second,
 		LockTryOnce:  true,
@@ -482,7 +484,7 @@ func (c *RemoteClient) lock() (string, error) {
 
 				if err != nil {
 					// We failed to get the lock, keep trying as long as
-					// opentf is running. There may be changes in progress,
+					// tofu is running. There may be changes in progress,
 					// so there's no use in aborting. Either we eventually
 					// reacquire the lock, or a Put will fail on a CAS.
 					log.Printf("[ERROR] could not reacquire lock: %s", err)
@@ -559,11 +561,11 @@ func (c *RemoteClient) unlock(id string) error {
 	// This method can be called in two circumstances:
 	// - when the plan apply or destroy operation finishes and the lock needs to be released,
 	// the watchdog stopped and the session closed
-	// - when the user calls `opentf force-unlock <lock_id>` in which case
+	// - when the user calls `tofu force-unlock <lock_id>` in which case
 	// we only need to release the lock.
 
 	if c.consulLock == nil || c.lockCh == nil {
-		// The user called `opentf force-unlock <lock_id>`, we just destroy
+		// The user called `tofu force-unlock <lock_id>`, we just destroy
 		// the session which will release the lock, clean the KV store and quit.
 
 		_, err := c.Client.Session().Destroy(id, nil)
@@ -672,7 +674,7 @@ func (c *RemoteClient) chunkedMode() (bool, string, []string, *consulapi.KVPair,
 		var d map[string]interface{}
 		err = json.Unmarshal(pair.Value, &d)
 		// If there is an error when unmarshaling the payload, the state has
-		// probably been gziped in single entry mode.
+		// probably been gzipped in single entry mode.
 		if err == nil {
 			// If we find the "current-hash" key we were in chunked mode
 			hash, ok := d["current-hash"]

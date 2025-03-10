@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package jsondiff
@@ -8,10 +10,10 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/collections"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/computed"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/structured"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/collections"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/computed"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/structured"
+	"github.com/opentofu/opentofu/internal/plans"
 )
 
 type TransformPrimitiveJson func(before, after interface{}, ctype cty.Type, action plans.Action) computed.Diff
@@ -108,7 +110,7 @@ func (opts JsonOpts) processArray(change structured.ChangeSlice) computed.Diff {
 		// we just treat all children of a relevant list as also relevant, so we
 		// ignore the relevant attributes field.
 		//
-		// Interestingly the opentf plan builder also agrees with this, and
+		// Interestingly the tofu plan builder also agrees with this, and
 		// never sets relevant attributes beneath lists or sets. We're just
 		// going to enforce this logic here as well. If the list is relevant
 		// (decided elsewhere), then every element in the list is also relevant.

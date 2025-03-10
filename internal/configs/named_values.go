@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package configs
@@ -10,10 +12,11 @@ import (
 	"github.com/hashicorp/hcl/v2/ext/typeexpr"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/convert"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 )
 
 // A consistent detail message for all "not a valid identifier" diagnostics.
@@ -155,7 +158,7 @@ func decodeVariableBlock(block *hcl.Block, override bool) (*Variable, hcl.Diagno
 				diags = append(diags, &hcl.Diagnostic{
 					Severity: hcl.DiagError,
 					Summary:  "Invalid default value for variable",
-					Detail:   fmt.Sprintf("This default value is not compatible with the variable's type constraint: %s.", err),
+					Detail:   fmt.Sprintf("This default value is not compatible with the variable's type constraint: %s.", tfdiags.FormatError(err)),
 					Subject:  attr.Expr.Range().Ptr(),
 				})
 				val = cty.DynamicVal
@@ -211,7 +214,7 @@ func decodeVariableType(expr hcl.Expression) (cty.Type, *typeexpr.Defaults, Vari
 			diags = append(diags, &hcl.Diagnostic{
 				Severity: hcl.DiagError,
 				Summary:  "Invalid quoted type constraints",
-				Detail:   "OpenTF 0.11 and earlier required type constraints to be given in quotes, but that form is now deprecated and will be removed in a future version of OpenTF. Remove the quotes around \"string\".",
+				Detail:   "OpenTofu 0.11 and earlier required type constraints to be given in quotes, but that form is now deprecated and will be removed in a future version of OpenTofu. Remove the quotes around \"string\".",
 				Subject:  expr.Range().Ptr(),
 			})
 			return cty.DynamicPseudoType, nil, VariableParseLiteral, diags
@@ -219,7 +222,7 @@ func decodeVariableType(expr hcl.Expression) (cty.Type, *typeexpr.Defaults, Vari
 			diags = append(diags, &hcl.Diagnostic{
 				Severity: hcl.DiagError,
 				Summary:  "Invalid quoted type constraints",
-				Detail:   "OpenTF 0.11 and earlier required type constraints to be given in quotes, but that form is now deprecated and will be removed in a future version of OpenTF. Remove the quotes around \"list\" and write list(string) instead to explicitly indicate that the list elements are strings.",
+				Detail:   "OpenTofu 0.11 and earlier required type constraints to be given in quotes, but that form is now deprecated and will be removed in a future version of OpenTofu. Remove the quotes around \"list\" and write list(string) instead to explicitly indicate that the list elements are strings.",
 				Subject:  expr.Range().Ptr(),
 			})
 			return cty.DynamicPseudoType, nil, VariableParseHCL, diags
@@ -227,7 +230,7 @@ func decodeVariableType(expr hcl.Expression) (cty.Type, *typeexpr.Defaults, Vari
 			diags = append(diags, &hcl.Diagnostic{
 				Severity: hcl.DiagError,
 				Summary:  "Invalid quoted type constraints",
-				Detail:   "OpenTF 0.11 and earlier required type constraints to be given in quotes, but that form is now deprecated and will be removed in a future version of OpenTF. Remove the quotes around \"map\" and write map(string) instead to explicitly indicate that the map elements are strings.",
+				Detail:   "OpenTofu 0.11 and earlier required type constraints to be given in quotes, but that form is now deprecated and will be removed in a future version of OpenTofu. Remove the quotes around \"map\" and write map(string) instead to explicitly indicate that the map elements are strings.",
 				Subject:  expr.Range().Ptr(),
 			})
 			return cty.DynamicPseudoType, nil, VariableParseHCL, diags
@@ -344,13 +347,6 @@ func decodeVariableValidationBlock(varName string, block *hcl.Block, override bo
 					}
 				}
 			}
-			// If we fall out here then the reference is invalid.
-			diags = diags.Append(&hcl.Diagnostic{
-				Severity: hcl.DiagError,
-				Summary:  "Invalid reference in variable validation",
-				Detail:   fmt.Sprintf("The condition for variable %q can only refer to the variable itself, using var.%s.", varName, varName),
-				Subject:  traversal.SourceRange().Ptr(),
-			})
 		}
 		if goodRefs < 1 {
 			diags = diags.Append(&hcl.Diagnostic{
@@ -377,13 +373,6 @@ func decodeVariableValidationBlock(varName string, block *hcl.Block, override bo
 					}
 				}
 			}
-			// If we fall out here then the reference is invalid.
-			diags = diags.Append(&hcl.Diagnostic{
-				Severity: hcl.DiagError,
-				Summary:  "Invalid reference in variable validation",
-				Detail:   fmt.Sprintf("The error message for variable %q can only refer to the variable itself, using var.%s.", varName, varName),
-				Subject:  traversal.SourceRange().Ptr(),
-			})
 		}
 	}
 
@@ -404,6 +393,14 @@ type Output struct {
 	SensitiveSet   bool
 
 	DeclRange hcl.Range
+
+	// IsOverridden indicates if the output is being overridden. It's used in
+	// testing framework to not evaluate expression and use OverrideValue instead.
+	IsOverridden bool
+	// OverrideValue is only valid if IsOverridden is set to true. The value
+	// should be used instead of evaluated expression. It's possible to have no
+	// OverrideValue even with IsOverridden is set to true.
+	OverrideValue *cty.Value
 }
 
 func decodeOutputBlock(block *hcl.Block, override bool) (*Output, hcl.Diagnostics) {

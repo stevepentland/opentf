@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -6,12 +8,12 @@ package views
 import (
 	"fmt"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/format"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views/json"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/format"
+	"github.com/opentofu/opentofu/internal/command/views/json"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 // The Apply view is used for the apply command.
@@ -20,7 +22,7 @@ type Apply interface {
 	Outputs(outputValues map[string]*states.OutputValue)
 
 	Operation() Operation
-	Hooks() []opentf.Hook
+	Hooks() []tofu.Hook
 
 	Diagnostics(diags tfdiags.Diagnostics)
 	HelpPrompt()
@@ -67,12 +69,31 @@ func (v *ApplyHuman) ResourceCount(stateOutPath string) {
 			v.countHook.Removed,
 		)
 	} else if v.countHook.Imported > 0 {
+		if v.countHook.Forgotten > 0 {
+			v.view.streams.Printf(
+				v.view.colorize.Color("[reset][bold][green]\nApply complete! Resources: %d imported, %d added, %d changed, %d destroyed, %d forgotten.\n"),
+				v.countHook.Imported,
+				v.countHook.Added,
+				v.countHook.Changed,
+				v.countHook.Removed,
+				v.countHook.Forgotten,
+			)
+		} else {
+			v.view.streams.Printf(
+				v.view.colorize.Color("[reset][bold][green]\nApply complete! Resources: %d imported, %d added, %d changed, %d destroyed.\n"),
+				v.countHook.Imported,
+				v.countHook.Added,
+				v.countHook.Changed,
+				v.countHook.Removed,
+			)
+		}
+	} else if v.countHook.Forgotten > 0 {
 		v.view.streams.Printf(
-			v.view.colorize.Color("[reset][bold][green]\nApply complete! Resources: %d imported, %d added, %d changed, %d destroyed.\n"),
-			v.countHook.Imported,
+			v.view.colorize.Color("[reset][bold][green]\nApply complete! Resources: %d added, %d changed, %d destroyed, %d forgotten.\n"),
 			v.countHook.Added,
 			v.countHook.Changed,
 			v.countHook.Removed,
+			v.countHook.Forgotten,
 		)
 	} else {
 		v.view.streams.Printf(
@@ -99,11 +120,8 @@ func (v *ApplyHuman) Operation() Operation {
 	return NewOperation(arguments.ViewHuman, v.inAutomation, v.view)
 }
 
-func (v *ApplyHuman) Hooks() []opentf.Hook {
-	return []opentf.Hook{
-		v.countHook,
-		NewUiHook(v.view),
-	}
+func (v *ApplyHuman) Hooks() []tofu.Hook {
+	return []tofu.Hook{v.countHook, NewUIOptionalHook(v.view)}
 }
 
 func (v *ApplyHuman) Diagnostics(diags tfdiags.Diagnostics) {
@@ -118,7 +136,7 @@ func (v *ApplyHuman) HelpPrompt() {
 	v.view.HelpPrompt(command)
 }
 
-const stateOutPathPostApply = "The state of your infrastructure has been saved to the path below. This state is required to modify and destroy your infrastructure, so keep it safe. To inspect the complete state use the `opentf show` command."
+const stateOutPathPostApply = "The state of your infrastructure has been saved to the path below. This state is required to modify and destroy your infrastructure, so keep it safe. To inspect the complete state use the `tofu show` command."
 
 // The ApplyJSON implementation renders streaming JSON logs, suitable for
 // integrating with other software.
@@ -142,6 +160,7 @@ func (v *ApplyJSON) ResourceCount(stateOutPath string) {
 		Change:    v.countHook.Changed,
 		Remove:    v.countHook.Removed,
 		Import:    v.countHook.Imported,
+		Forget:    v.countHook.Forgotten,
 		Operation: operation,
 	})
 }
@@ -159,8 +178,8 @@ func (v *ApplyJSON) Operation() Operation {
 	return &OperationJSON{view: v.view}
 }
 
-func (v *ApplyJSON) Hooks() []opentf.Hook {
-	return []opentf.Hook{
+func (v *ApplyJSON) Hooks() []tofu.Hook {
+	return []tofu.Hook{
 		v.countHook,
 		newJSONHook(v.view),
 	}

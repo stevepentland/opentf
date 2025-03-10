@@ -2,10 +2,10 @@
   {
     "@level": "info",
     "@message": "Apply complete! Resources: 0 added, 0 changed, 0 destroyed.",
-    "@module": "opentf.ui",
     "changes": {
       "add": 0,
       "change": 0,
+      "forget": 0,
       "import": 0,
       "operation": "apply",
       "remove": 0
@@ -15,7 +15,6 @@
   {
     "@level": "info",
     "@message": "Outputs: 5",
-    "@module": "opentf.ui",
     "outputs": {
       "list_empty_default": {
         "sensitive": false,

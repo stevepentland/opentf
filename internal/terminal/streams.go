@@ -1,11 +1,13 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 // Package terminal encapsulates some platform-specific logic for detecting
 // if we're running in a terminal and, if so, properly configuring that
-// terminal to meet the assumptions that the rest of Terraform makes.
+// terminal to meet the assumptions that the rest of OpenTofu makes.
 //
-// Specifically, Terraform requires a Terminal which supports virtual terminal
+// Specifically, OpenTofu requires a Terminal which supports virtual terminal
 // sequences and which accepts UTF-8-encoded text.
 //
 // This is an abstraction only over the platform-specific detection of and
@@ -29,10 +31,10 @@ import (
 // available, such as detecting the current terminal width. If we're connected
 // to something else, such as a pipe or a file on disk, the stream will
 // typically provide placeholder values or do-nothing stubs for
-// terminal-requiring operatons.
+// terminal-requiring operations.
 //
 // Note that it's possible for only a subset of the streams to be connected
-// to a terminal. For example, this happens if the user runs Terraform with
+// to a terminal. For example, this happens if the user runs OpenTofu with
 // I/O redirection where Stdout might refer to a regular disk file while Stderr
 // refers to a terminal, or various other similar combinations.
 type Streams struct {
@@ -41,12 +43,12 @@ type Streams struct {
 	Stdin  *InputStream
 }
 
-// Init tries to initialize a terminal, if Terraform is running in one, and
+// Init tries to initialize a terminal, if OpenTofu is running in one, and
 // returns an object describing what it was able to set up.
 //
 // An error for this function indicates that the current execution context
-// can't meet Terraform's assumptions. For example, on Windows Init will return
-// an error if Terraform is running in a Windows Console that refuses to
+// can't meet OpenTofu's assumptions. For example, on Windows Init will return
+// an error if OpenTofu is running in a Windows Console that refuses to
 // activate UTF-8 mode, which can happen if we're running on an unsupported old
 // version of Windows.
 //

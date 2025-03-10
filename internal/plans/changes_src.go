@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package plans
@@ -6,8 +8,8 @@ package plans
 import (
 	"fmt"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/states"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -69,7 +71,7 @@ type ResourceInstanceChangeSrc struct {
 	RequiredReplace cty.PathSet
 
 	// Private allows a provider to stash any extra data that is opaque to
-	// OpenTF that relates to this change. OpenTF will save this
+	// OpenTofu that relates to this change. OpenTofu will save this
 	// byte-for-byte and return it to the provider in the apply call.
 	Private []byte
 }
@@ -241,13 +243,13 @@ func (cs *ChangeSrc) Decode(ty cty.Type) (*Change, error) {
 	if len(cs.Before) > 0 {
 		before, err = cs.Before.Decode(ty)
 		if err != nil {
-			return nil, fmt.Errorf("error decoding 'before' value: %s", err)
+			return nil, fmt.Errorf("error decoding 'before' value: %w", err)
 		}
 	}
 	if len(cs.After) > 0 {
 		after, err = cs.After.Decode(ty)
 		if err != nil {
-			return nil, fmt.Errorf("error decoding 'after' value: %s", err)
+			return nil, fmt.Errorf("error decoding 'after' value: %w", err)
 		}
 	}
 

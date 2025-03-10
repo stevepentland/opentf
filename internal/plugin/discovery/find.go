@@ -1,10 +1,11 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package discovery
 
 import (
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -51,7 +52,7 @@ func findPluginPaths(kind string, dirs []string) []string {
 	ret := make([]string, 0, len(dirs))
 
 	for _, dir := range dirs {
-		items, err := ioutil.ReadDir(dir)
+		items, err := os.ReadDir(dir)
 		if err != nil {
 			// Ignore missing dirs, non-dirs, etc
 			continue

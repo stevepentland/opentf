@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package cloud
@@ -12,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path"
 	"strconv"
 	"testing"
@@ -25,18 +28,19 @@ import (
 	"github.com/mitchellh/colorstring"
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/httpclient"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
-	"github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/httpclient"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
+	"github.com/opentofu/opentofu/version"
 
-	backendLocal "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/local"
+	backendLocal "github.com/opentofu/opentofu/internal/backend/local"
 )
 
 const (
@@ -44,9 +48,9 @@ const (
 )
 
 var (
-	tfeHost  = svchost.Hostname(defaultHostname)
+	tfeHost  = "app.terraform.io"
 	credsSrc = auth.StaticCredentialsSource(map[svchost.Hostname]map[string]interface{}{
-		tfeHost: {"token": testCred},
+		svchost.Hostname(tfeHost): {"token": testCred},
 	})
 	testBackendSingleWorkspaceName = "app-prod"
 	defaultTFCPing                 = map[string]func(http.ResponseWriter, *http.Request){
@@ -58,12 +62,18 @@ var (
 	}
 )
 
-// mockInput is a mock implementation of terraform.UIInput.
+func skipIfTFENotEnabled(t *testing.T) {
+	if os.Getenv("TF_TFC_TEST") == "" {
+		t.Skip("this test accesses " + tfeHost + "; set TF_TFC_TEST=1 to run it")
+	}
+}
+
+// mockInput is a mock implementation of tofu.UIInput.
 type mockInput struct {
 	answers map[string]string
 }
 
-func (m *mockInput) Input(ctx context.Context, opts *opentf.InputOpts) (string, error) {
+func (m *mockInput) Input(ctx context.Context, opts *tofu.InputOpts) (string, error) {
 	v, ok := m.answers[opts.Id]
 	if !ok {
 		return "", fmt.Errorf("unexpected input request in test: %s", opts.Id)
@@ -79,6 +89,7 @@ func (m *mockInput) Input(ctx context.Context, opts *opentf.InputOpts) (string, 
 }
 
 func testInput(t *testing.T, answers map[string]string) *mockInput {
+	skipIfTFENotEnabled(t)
 	return &mockInput{answers: answers}
 }
 
@@ -89,7 +100,7 @@ func testBackendWithName(t *testing.T) (*Cloud, func()) {
 
 func testBackendAndMocksWithName(t *testing.T) (*Cloud, *MockClient, func()) {
 	obj := cty.ObjectVal(map[string]cty.Value{
-		"hostname":     cty.NullVal(cty.String),
+		"hostname":     cty.StringVal(tfeHost),
 		"organization": cty.StringVal("hashicorp"),
 		"token":        cty.NullVal(cty.String),
 		"workspaces": cty.ObjectVal(map[string]cty.Value{
@@ -103,7 +114,7 @@ func testBackendAndMocksWithName(t *testing.T) (*Cloud, *MockClient, func()) {
 
 func testBackendWithTags(t *testing.T) (*Cloud, func()) {
 	obj := cty.ObjectVal(map[string]cty.Value{
-		"hostname":     cty.NullVal(cty.String),
+		"hostname":     cty.StringVal(tfeHost),
 		"organization": cty.StringVal("hashicorp"),
 		"token":        cty.NullVal(cty.String),
 		"workspaces": cty.ObjectVal(map[string]cty.Value{
@@ -122,7 +133,7 @@ func testBackendWithTags(t *testing.T) (*Cloud, func()) {
 
 func testBackendNoOperations(t *testing.T) (*Cloud, func()) {
 	obj := cty.ObjectVal(map[string]cty.Value{
-		"hostname":     cty.NullVal(cty.String),
+		"hostname":     cty.StringVal(tfeHost),
 		"organization": cty.StringVal("no-operations"),
 		"token":        cty.NullVal(cty.String),
 		"workspaces": cty.ObjectVal(map[string]cty.Value{
@@ -137,7 +148,7 @@ func testBackendNoOperations(t *testing.T) (*Cloud, func()) {
 
 func testBackendWithHandlers(t *testing.T, handlers map[string]func(http.ResponseWriter, *http.Request)) (*Cloud, func()) {
 	obj := cty.ObjectVal(map[string]cty.Value{
-		"hostname":     cty.NullVal(cty.String),
+		"hostname":     cty.StringVal(tfeHost),
 		"organization": cty.StringVal("hashicorp"),
 		"token":        cty.NullVal(cty.String),
 		"workspaces": cty.ObjectVal(map[string]cty.Value{
@@ -225,13 +236,14 @@ func testBackendWithOutputs(t *testing.T) (*Cloud, func()) {
 }
 
 func testBackend(t *testing.T, obj cty.Value, handlers map[string]func(http.ResponseWriter, *http.Request)) (*Cloud, *MockClient, func()) {
+	skipIfTFENotEnabled(t)
 	var s *httptest.Server
 	if handlers != nil {
 		s = testServerWithHandlers(handlers)
 	} else {
 		s = testServer(t)
 	}
-	b := New(testDisco(s))
+	b := New(testDisco(s), encryption.StateEncryptionDisabled())
 
 	// Configure the backend so the client is created.
 	newObj, valDiags := b.PrepareConfig(obj)
@@ -269,7 +281,7 @@ func testBackend(t *testing.T, obj cty.Value, handlers map[string]func(http.Resp
 	b.local = testLocalBackend(t, b)
 	b.input = true
 
-	baseURL, err := url.Parse("https://app.terraform.io")
+	baseURL, err := url.Parse("https://" + tfeHost)
 	if err != nil {
 		t.Fatalf("testBackend: failed to parse base URL for client")
 	}
@@ -305,8 +317,10 @@ func testBackend(t *testing.T, obj cty.Value, handlers map[string]func(http.Resp
 // testUnconfiguredBackend is used for testing the configuration of the backend
 // with the mock client
 func testUnconfiguredBackend(t *testing.T) (*Cloud, func()) {
+	skipIfTFENotEnabled(t)
+
 	s := testServer(t)
-	b := New(testDisco(s))
+	b := New(testDisco(s), encryption.StateEncryptionDisabled())
 
 	// Normally, the client is created during configuration, but the configuration uses the
 	// client to read entitlements.
@@ -337,7 +351,7 @@ func testUnconfiguredBackend(t *testing.T) (*Cloud, func()) {
 	b.client.Variables = mc.Variables
 	b.client.Workspaces = mc.Workspaces
 
-	baseURL, err := url.Parse("https://app.terraform.io")
+	baseURL, err := url.Parse("https://" + tfeHost)
 	if err != nil {
 		t.Fatalf("testBackend: failed to parse base URL for client")
 	}
@@ -354,7 +368,9 @@ func testUnconfiguredBackend(t *testing.T) (*Cloud, func()) {
 }
 
 func testLocalBackend(t *testing.T, cloud *Cloud) backend.Enhanced {
-	b := backendLocal.NewWithBackend(cloud)
+	skipIfTFENotEnabled(t)
+
+	b := backendLocal.NewWithBackend(cloud, nil)
 
 	// Add a test provider to the local backend.
 	p := backendLocal.TestLocalProvider(t, b, "null", providers.ProviderSchema{
@@ -378,6 +394,8 @@ func testLocalBackend(t *testing.T, cloud *Cloud) backend.Enhanced {
 // testServer returns a started *httptest.Server used for local testing with the default set of
 // request handlers.
 func testServer(t *testing.T) *httptest.Server {
+	skipIfTFENotEnabled(t)
+
 	return testServerWithHandlers(testDefaultRequestHandlers)
 }
 
@@ -398,6 +416,8 @@ func testServerWithHandlers(handlers map[string]func(http.ResponseWriter, *http.
 }
 
 func testServerWithSnapshotsEnabled(t *testing.T, enabled bool) *httptest.Server {
+	skipIfTFENotEnabled(t)
+
 	var serverURL string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Log(r.Method, r.URL.String())
@@ -407,7 +427,7 @@ func testServerWithSnapshotsEnabled(t *testing.T, enabled bool) *httptest.Server
 			fakeState := states.NewState()
 			fakeStateFile := statefile.New(fakeState, "boop", 1)
 			var buf bytes.Buffer
-			statefile.Write(fakeStateFile, &buf)
+			statefile.Write(fakeStateFile, &buf, encryption.StateEncryptionDisabled())
 			respBody := buf.Bytes()
 			w.Header().Set("content-type", "application/json")
 			w.Header().Set("content-length", strconv.FormatInt(int64(len(respBody)), 10))
@@ -437,7 +457,7 @@ func testServerWithSnapshotsEnabled(t *testing.T, enabled bool) *httptest.Server
 			t.Fatal(err)
 		}
 
-		w.Header().Set("content-type", "application/json")
+		w.Header().Set("content-type", tfe.ContentTypeJSONAPI)
 		w.Header().Set("content-length", strconv.FormatInt(int64(len(fakeBodyRaw)), 10))
 
 		switch r.Method {
@@ -579,9 +599,9 @@ func testDisco(s *httptest.Server) *disco.Disco {
 		"tfe.v2": fmt.Sprintf("%s/api/v2/", s.URL),
 	}
 	d := disco.NewWithCredentialsSource(credsSrc)
-	d.SetUserAgent(httpclient.OpenTfUserAgent(version.String()))
+	d.SetUserAgent(httpclient.OpenTofuUserAgent(version.String()))
 
-	d.ForceHostServices(svchost.Hostname(defaultHostname), services)
+	d.ForceHostServices(svchost.Hostname(tfeHost), services)
 	d.ForceHostServices(svchost.Hostname("localhost"), services)
 	d.ForceHostServices(svchost.Hostname("nontfe.local"), nil)
 	return d
@@ -589,18 +609,18 @@ func testDisco(s *httptest.Server) *disco.Disco {
 
 type unparsedVariableValue struct {
 	value  string
-	source opentf.ValueSourceType
+	source tofu.ValueSourceType
 }
 
-func (v *unparsedVariableValue) ParseVariableValue(mode configs.VariableParsingMode) (*opentf.InputValue, tfdiags.Diagnostics) {
-	return &opentf.InputValue{
+func (v *unparsedVariableValue) ParseVariableValue(mode configs.VariableParsingMode) (*tofu.InputValue, tfdiags.Diagnostics) {
+	return &tofu.InputValue{
 		Value:      cty.StringVal(v.value),
 		SourceType: v.source,
 	}, tfdiags.Diagnostics{}
 }
 
 // testVariable returns a backend.UnparsedVariableValue used for testing.
-func testVariables(s opentf.ValueSourceType, vs ...string) map[string]backend.UnparsedVariableValue {
+func testVariables(s tofu.ValueSourceType, vs ...string) map[string]backend.UnparsedVariableValue {
 	vars := make(map[string]backend.UnparsedVariableValue, len(vs))
 	for _, v := range vs {
 		vars[v] = &unparsedVariableValue{

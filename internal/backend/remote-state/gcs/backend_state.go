@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package gcs
@@ -12,10 +14,10 @@ import (
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/remote"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/remote"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
 )
 
 const (
@@ -39,7 +41,7 @@ func (b *Backend) Workspaces() ([]string, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("querying Cloud Storage failed: %v", err)
+			return nil, fmt.Errorf("querying Cloud Storage failed: %w", err)
 		}
 
 		name := path.Base(attrs.Name)
@@ -96,7 +98,7 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 		return nil, err
 	}
 
-	st := &remote.State{Client: c}
+	st := remote.NewState(c, b.encryption)
 
 	// Grab the value
 	if err := st.RefreshState(); err != nil {

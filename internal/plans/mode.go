@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package plans
@@ -19,8 +21,8 @@ const (
 	// prior state, even if the configuration for those instances is still
 	// present.
 	//
-	// This mode corresponds with the "-destroy" option to "opentf plan",
-	// and with the plan created by the "opentf destroy" command.
+	// This mode corresponds with the "-destroy" option to "tofu plan",
+	// and with the plan created by the "tofu destroy" command.
 	DestroyMode Mode = 'D'
 
 	// RefreshOnlyMode is a special planning mode which only performs the
@@ -29,6 +31,6 @@ const (
 	// the configuration has changed relative to the state.
 	//
 	// This mode corresponds with the "-refresh-only" option to
-	// "opentf plan".
+	// "tofu plan".
 	RefreshOnlyMode Mode = 'R'
 )

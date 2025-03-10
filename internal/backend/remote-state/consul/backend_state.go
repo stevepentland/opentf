@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package consul
@@ -7,10 +9,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/remote"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/remote"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
 )
 
 const (
@@ -74,14 +76,15 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 	gzip := b.configData.Get("gzip").(bool)
 
 	// Build the state client
-	var stateMgr = &remote.State{
-		Client: &RemoteClient{
+	var stateMgr = remote.NewState(
+		&RemoteClient{
 			Client:    b.client,
 			Path:      path,
 			GZip:      gzip,
 			lockState: b.lock,
 		},
-	}
+		b.encryption,
+	)
 
 	if !b.lock {
 		stateMgr.DisableLocks()
@@ -99,7 +102,7 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 	lockInfo.Operation = "init"
 	lockId, err := stateMgr.Lock(lockInfo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to lock state in Consul: %s", err)
+		return nil, fmt.Errorf("failed to lock state in Consul: %w", err)
 	}
 
 	// Local helper function so we can call it multiple places
@@ -149,7 +152,7 @@ func (b *Backend) path(name string) string {
 const errStateUnlock = `
 Error unlocking Consul state. Lock ID: %s
 
-Error: %s
+Error: %w
 
 You may have to force-unlock this state in order to use it again.
 The Consul backend acquires a lock during initialization to ensure

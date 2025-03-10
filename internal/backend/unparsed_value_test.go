@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package backend
@@ -11,9 +13,9 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 func TestUnparsedValue(t *testing.T) {
@@ -72,10 +74,10 @@ func TestUnparsedValue(t *testing.T) {
 			t.Fatalf("wrong number of diagnostics %d; want %d", got, want)
 		}
 
-		wantVals := opentf.InputValues{
+		wantVals := tofu.InputValues{
 			"declared1": {
 				Value:      cty.StringVal("5"),
-				SourceType: opentf.ValueFromNamedFile,
+				SourceType: tofu.ValueFromNamedFile,
 				SourceRange: tfdiags.SourceRange{
 					Filename: "fake.tfvars",
 					Start:    tfdiags.SourcePos{Line: 1, Column: 1, Byte: 0},
@@ -108,10 +110,10 @@ func TestUnparsedValue(t *testing.T) {
 			t.Errorf("wrong summary for diagnostic 2\ngot:  %s\nwant: %s", got, want)
 		}
 
-		wantVals := opentf.InputValues{
+		wantVals := tofu.InputValues{
 			"undeclared0": {
 				Value:      cty.StringVal("0"),
-				SourceType: opentf.ValueFromNamedFile,
+				SourceType: tofu.ValueFromNamedFile,
 				SourceRange: tfdiags.SourceRange{
 					Filename: "fake.tfvars",
 					Start:    tfdiags.SourcePos{Line: 1, Column: 1},
@@ -120,7 +122,7 @@ func TestUnparsedValue(t *testing.T) {
 			},
 			"undeclared1": {
 				Value:      cty.StringVal("1"),
-				SourceType: opentf.ValueFromNamedFile,
+				SourceType: tofu.ValueFromNamedFile,
 				SourceRange: tfdiags.SourceRange{
 					Filename: "fake.tfvars",
 					Start:    tfdiags.SourcePos{Line: 1, Column: 1},
@@ -129,7 +131,7 @@ func TestUnparsedValue(t *testing.T) {
 			},
 			"undeclared2": {
 				Value:      cty.StringVal("2"),
-				SourceType: opentf.ValueFromNamedFile,
+				SourceType: tofu.ValueFromNamedFile,
 				SourceRange: tfdiags.SourceRange{
 					Filename: "fake.tfvars",
 					Start:    tfdiags.SourcePos{Line: 1, Column: 1},
@@ -138,7 +140,7 @@ func TestUnparsedValue(t *testing.T) {
 			},
 			"undeclared3": {
 				Value:      cty.StringVal("3"),
-				SourceType: opentf.ValueFromNamedFile,
+				SourceType: tofu.ValueFromNamedFile,
 				SourceRange: tfdiags.SourceRange{
 					Filename: "fake.tfvars",
 					Start:    tfdiags.SourcePos{Line: 1, Column: 1},
@@ -147,7 +149,7 @@ func TestUnparsedValue(t *testing.T) {
 			},
 			"undeclared4": {
 				Value:      cty.StringVal("4"),
-				SourceType: opentf.ValueFromNamedFile,
+				SourceType: tofu.ValueFromNamedFile,
 				SourceRange: tfdiags.SourceRange{
 					Filename: "fake.tfvars",
 					Start:    tfdiags.SourcePos{Line: 1, Column: 1},
@@ -187,10 +189,10 @@ func TestUnparsedValue(t *testing.T) {
 			t.Errorf("wrong summary for diagnostic 3\ngot:  %s\nwant: %s", got, want)
 		}
 
-		wantVals := opentf.InputValues{
+		wantVals := tofu.InputValues{
 			"declared1": {
 				Value:      cty.StringVal("5"),
-				SourceType: opentf.ValueFromNamedFile,
+				SourceType: tofu.ValueFromNamedFile,
 				SourceRange: tfdiags.SourceRange{
 					Filename: "fake.tfvars",
 					Start:    tfdiags.SourcePos{Line: 1, Column: 1, Byte: 0},
@@ -199,7 +201,7 @@ func TestUnparsedValue(t *testing.T) {
 			},
 			"missing1": {
 				Value:      cty.DynamicVal,
-				SourceType: opentf.ValueFromConfig,
+				SourceType: tofu.ValueFromConfig,
 				SourceRange: tfdiags.SourceRange{
 					Filename: "fake.tf",
 					Start:    tfdiags.SourcePos{Line: 3, Column: 1, Byte: 0},
@@ -207,8 +209,8 @@ func TestUnparsedValue(t *testing.T) {
 				},
 			},
 			"missing2": {
-				Value:      cty.NilVal, // OpenTF Core handles substituting the default
-				SourceType: opentf.ValueFromConfig,
+				Value:      cty.NilVal, // OpenTofu Core handles substituting the default
+				SourceType: tofu.ValueFromConfig,
 				SourceRange: tfdiags.SourceRange{
 					Filename: "fake.tf",
 					Start:    tfdiags.SourcePos{Line: 4, Column: 1, Byte: 0},
@@ -224,10 +226,10 @@ func TestUnparsedValue(t *testing.T) {
 
 type testUnparsedVariableValue string
 
-func (v testUnparsedVariableValue) ParseVariableValue(mode configs.VariableParsingMode) (*opentf.InputValue, tfdiags.Diagnostics) {
-	return &opentf.InputValue{
+func (v testUnparsedVariableValue) ParseVariableValue(mode configs.VariableParsingMode) (*tofu.InputValue, tfdiags.Diagnostics) {
+	return &tofu.InputValue{
 		Value:      cty.StringVal(string(v)),
-		SourceType: opentf.ValueFromNamedFile,
+		SourceType: tofu.ValueFromNamedFile,
 		SourceRange: tfdiags.SourceRange{
 			Filename: "fake.tfvars",
 			Start:    tfdiags.SourcePos{Line: 1, Column: 1, Byte: 0},
