@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package addrs
@@ -11,7 +13,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 func TestParseRefInTestingScope(t *testing.T) {
@@ -114,7 +116,7 @@ func TestParseRefInTestingScope(t *testing.T) {
 			}
 
 			for _, problem := range deep.Equal(got, test.Want) {
-				t.Errorf(problem)
+				t.Errorf("%s", problem)
 			}
 		})
 	}
@@ -604,9 +606,7 @@ func TestParseRef(t *testing.T) {
 		{
 			`terraform.workspace`,
 			&Reference{
-				Subject: TerraformAttr{
-					Name: "workspace",
-				},
+				Subject: NewTerraformAttr("terraform", "workspace"),
 				SourceRange: tfdiags.SourceRange{
 					Start: tfdiags.SourcePos{Line: 1, Column: 1, Byte: 0},
 					End:   tfdiags.SourcePos{Line: 1, Column: 20, Byte: 19},
@@ -617,9 +617,7 @@ func TestParseRef(t *testing.T) {
 		{
 			`terraform.workspace.blah`,
 			&Reference{
-				Subject: TerraformAttr{
-					Name: "workspace",
-				},
+				Subject: NewTerraformAttr("terraform", "workspace"),
 				SourceRange: tfdiags.SourceRange{
 					Start: tfdiags.SourcePos{Line: 1, Column: 1, Byte: 0},
 					End:   tfdiags.SourcePos{Line: 1, Column: 20, Byte: 19},
@@ -645,6 +643,49 @@ func TestParseRef(t *testing.T) {
 			`terraform["workspace"]`,
 			nil,
 			`The "terraform" object does not support this operation.`,
+		},
+
+		// tofu
+		{
+			`tofu.workspace`,
+			&Reference{
+				Subject: NewTerraformAttr("tofu", "workspace"),
+				SourceRange: tfdiags.SourceRange{
+					Start: tfdiags.SourcePos{Line: 1, Column: 1, Byte: 0},
+					End:   tfdiags.SourcePos{Line: 1, Column: 15, Byte: 14},
+				},
+			},
+			``,
+		},
+		{
+			`tofu.workspace.blah`,
+			&Reference{
+				Subject: NewTerraformAttr("tofu", "workspace"),
+				SourceRange: tfdiags.SourceRange{
+					Start: tfdiags.SourcePos{Line: 1, Column: 1, Byte: 0},
+					End:   tfdiags.SourcePos{Line: 1, Column: 15, Byte: 14},
+				},
+				Remaining: hcl.Traversal{
+					hcl.TraverseAttr{
+						Name: "blah",
+						SrcRange: hcl.Range{
+							Start: hcl.Pos{Line: 1, Column: 15, Byte: 14},
+							End:   hcl.Pos{Line: 1, Column: 20, Byte: 19},
+						},
+					},
+				},
+			},
+			``, // valid at this layer, but will fail during eval because "workspace" is a string
+		},
+		{
+			`tofu`,
+			nil,
+			`The "tofu" object cannot be accessed directly. Instead, access one of its attributes.`,
+		},
+		{
+			`tofu["workspace"]`,
+			nil,
+			`The "tofu" object does not support this operation.`,
 		},
 
 		// var
@@ -697,7 +738,7 @@ func TestParseRef(t *testing.T) {
 		// the "resource" prefix forces interpreting the next name as a
 		// resource type name. This is an alias for just using a resource
 		// type name at the top level, to be used only if a later edition
-		// of the OpenTF language introduces a new reserved word that
+		// of the OpenTofu language introduces a new reserved word that
 		// overlaps with a resource type name.
 		{
 			`resource.boop_instance.foo`,
@@ -721,17 +762,17 @@ func TestParseRef(t *testing.T) {
 		{
 			`template.foo`,
 			nil,
-			`The symbol name "template" is reserved for use in a future OpenTF version. If you are using a provider that already uses this as a resource type name, add the prefix "resource." to force interpretation as a resource type name.`,
+			`The symbol name "template" is reserved for use in a future OpenTofu version. If you are using a provider that already uses this as a resource type name, add the prefix "resource." to force interpretation as a resource type name.`,
 		},
 		{
 			`lazy.foo`,
 			nil,
-			`The symbol name "lazy" is reserved for use in a future OpenTF version. If you are using a provider that already uses this as a resource type name, add the prefix "resource." to force interpretation as a resource type name.`,
+			`The symbol name "lazy" is reserved for use in a future OpenTofu version. If you are using a provider that already uses this as a resource type name, add the prefix "resource." to force interpretation as a resource type name.`,
 		},
 		{
 			`arg.foo`,
 			nil,
-			`The symbol name "arg" is reserved for use in a future OpenTF version. If you are using a provider that already uses this as a resource type name, add the prefix "resource." to force interpretation as a resource type name.`,
+			`The symbol name "arg" is reserved for use in a future OpenTofu version. If you are using a provider that already uses this as a resource type name, add the prefix "resource." to force interpretation as a resource type name.`,
 		},
 
 		// anything else, interpreted as a managed resource reference
@@ -890,7 +931,7 @@ func TestParseRef(t *testing.T) {
 			}
 
 			for _, problem := range deep.Equal(got, test.Want) {
-				t.Errorf(problem)
+				t.Errorf("%s", problem)
 			}
 		})
 	}

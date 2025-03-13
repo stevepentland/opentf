@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package init
@@ -6,14 +8,15 @@ package init
 import (
 	"testing"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/inmem"
+	"github.com/opentofu/opentofu/internal/backend/remote-state/inmem"
+	"github.com/opentofu/opentofu/internal/encryption"
 	"github.com/zclconf/go-cty/cty"
 )
 
 func TestDeprecateBackend(t *testing.T) {
 	deprecateMessage := "deprecated backend"
 	deprecatedBackend := deprecateBackend(
-		inmem.New(),
+		inmem.New(encryption.StateEncryptionDisabled()),
 		deprecateMessage,
 	)
 

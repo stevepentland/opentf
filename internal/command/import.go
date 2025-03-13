@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -12,24 +14,24 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/zclconf/go-cty/cty"
-
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 // ImportCommand is a cli.Command implementation that imports resources
-// into the Terraform state.
+// into the OpenTofu state.
 type ImportCommand struct {
 	Meta
 }
 
 func (c *ImportCommand) Run(args []string) int {
+	ctx := c.CommandContext()
+
 	// Get the pwd since its our default -config flag value
 	pwd, err := os.Getwd()
 	if err != nil {
@@ -41,7 +43,7 @@ func (c *ImportCommand) Run(args []string) int {
 	args = c.Meta.process(args)
 
 	cmdFlags := c.Meta.extendedFlagSet("import")
-	cmdFlags.BoolVar(&c.ignoreRemoteVersion, "ignore-remote-version", false, "continue even if remote and local OpenTF versions are incompatible")
+	cmdFlags.BoolVar(&c.ignoreRemoteVersion, "ignore-remote-version", false, "continue even if remote and local OpenTofu versions are incompatible")
 	cmdFlags.IntVar(&c.Meta.parallelism, "parallelism", DefaultParallelism, "parallelism")
 	cmdFlags.StringVar(&c.Meta.statePath, "state", "", "path")
 	cmdFlags.StringVar(&c.Meta.stateOutPath, "state-out", "", "path")
@@ -91,9 +93,9 @@ func (c *ImportCommand) Run(args []string) int {
 	if !c.dirIsConfigPath(configPath) {
 		diags = diags.Append(&hcl.Diagnostic{
 			Severity: hcl.DiagError,
-			Summary:  "No OpenTF configuration files",
+			Summary:  "No OpenTofu configuration files",
 			Detail: fmt.Sprintf(
-				"The directory %s does not contain any OpenTF configuration files (.tf or .tf.json). To specify a different configuration directory, use the -config=\"...\" command line option.",
+				"The directory %s does not contain any OpenTofu configuration files (.tf or .tf.json). To specify a different configuration directory, use the -config=\"...\" command line option.",
 				configPath,
 			),
 		})
@@ -110,9 +112,17 @@ func (c *ImportCommand) Run(args []string) int {
 		return 1
 	}
 
+	// Load the encryption configuration
+	enc, encDiags := c.EncryptionFromPath(configPath)
+	diags = diags.Append(encDiags)
+	if encDiags.HasErrors() {
+		c.showDiagnostics(diags)
+		return 1
+	}
+
 	// Verify that the given address points to something that exists in config.
 	// This is to reduce the risk that a typo in the resource address will
-	// import something that Terraform will want to immediately destroy on
+	// import something that OpenTofu will want to immediately destroy on
 	// the next plan, and generally acts as a reassurance of user intent.
 	targetConfig := config.DescendentForInstance(addr.Module)
 	if targetConfig == nil {
@@ -167,7 +177,7 @@ func (c *ImportCommand) Run(args []string) int {
 	// Load the backend
 	b, backendDiags := c.Backend(&BackendOpts{
 		Config: config.Module.Backend,
-	})
+	}, enc.State())
 	diags = diags.Append(backendDiags)
 	if backendDiags.HasErrors() {
 		c.showDiagnostics(diags)
@@ -186,7 +196,7 @@ func (c *ImportCommand) Run(args []string) int {
 	}
 
 	// Build the operation
-	opReq := c.Operation(b, arguments.ViewHuman)
+	opReq := c.Operation(b, arguments.ViewHuman, enc)
 	opReq.ConfigDir = configPath
 	opReq.ConfigLoader, err = c.initConfigLoader()
 	if err != nil {
@@ -194,11 +204,13 @@ func (c *ImportCommand) Run(args []string) int {
 		c.showDiagnostics(diags)
 		return 1
 	}
-	opReq.Hooks = []opentf.Hook{c.uiHook()}
+	opReq.Hooks = []tofu.Hook{c.uiHook()}
 	{
-		var moreDiags tfdiags.Diagnostics
+		// Setup required variables/call for operation (usually done in Meta.RunOperation)
+		var moreDiags, callDiags tfdiags.Diagnostics
 		opReq.Variables, moreDiags = c.collectVariableValues()
-		diags = diags.Append(moreDiags)
+		opReq.RootCall, callDiags = c.rootModuleCall(opReq.ConfigDir)
+		diags = diags.Append(moreDiags).Append(callDiags)
 		if moreDiags.HasErrors() {
 			c.showDiagnostics(diags)
 			return 1
@@ -206,7 +218,7 @@ func (c *ImportCommand) Run(args []string) int {
 	}
 	opReq.View = views.NewOperation(arguments.ViewHuman, c.RunningInAutomation, c.View)
 
-	// Check remote Terraform version is compatible
+	// Check remote OpenTofu version is compatible
 	remoteVersionDiags := c.remoteVersionCheck(b, opReq.Workspace)
 	diags = diags.Append(remoteVersionDiags)
 	c.showDiagnostics(diags)
@@ -215,7 +227,7 @@ func (c *ImportCommand) Run(args []string) int {
 	}
 
 	// Get the context
-	lr, state, ctxDiags := local.LocalRun(opReq)
+	lr, state, ctxDiags := local.LocalRun(ctx, opReq)
 	diags = diags.Append(ctxDiags)
 	if ctxDiags.HasErrors() {
 		c.showDiagnostics(diags)
@@ -233,14 +245,13 @@ func (c *ImportCommand) Run(args []string) int {
 	// Perform the import. Note that as you can see it is possible for this
 	// API to import more than one resource at once. For now, we only allow
 	// one while we stabilize this feature.
-	newState, importDiags := lr.Core.Import(lr.Config, lr.InputState, &opentf.ImportOpts{
-		Targets: []*opentf.ImportTarget{
+	newState, importDiags := lr.Core.Import(ctx, lr.Config, lr.InputState, &tofu.ImportOpts{
+		Targets: []*tofu.ImportTarget{
 			{
-				Addr: addr,
-
-				// In the import block, the ID can be an arbitrary hcl.Expression,
-				// but here it's always interpreted as a literal string.
-				ID: hcl.StaticExpr(cty.StringVal(args[1]), configs.SynthBody("import", nil).MissingItemRange()),
+				CommandLineImportTarget: &tofu.CommandLineImportTarget{
+					Addr: addr,
+					ID:   args[1],
+				},
 			},
 		},
 
@@ -256,7 +267,7 @@ func (c *ImportCommand) Run(args []string) int {
 	}
 
 	// Get schemas, if possible, before writing state
-	var schemas *opentf.Schemas
+	var schemas *tofu.Schemas
 	if isCloudMode(b) {
 		var schemaDiags tfdiags.Diagnostics
 		schemas, schemaDiags = c.MaybeGetSchemas(newState, nil)
@@ -286,13 +297,13 @@ func (c *ImportCommand) Run(args []string) int {
 
 func (c *ImportCommand) Help() string {
 	helpText := `
-Usage: opentf [global options] import [options] ADDR ID
+Usage: tofu [global options] import [options] ADDR ID
 
-  Import existing infrastructure into your OpenTF state.
+  Import existing infrastructure into your OpenTofu state.
 
-  This will find and import the specified resource into your OpenTF
-  state, allowing existing infrastructure to come under OpenTF
-  management without having to be initially created by OpenTF.
+  This will find and import the specified resource into your OpenTofu
+  state, allowing existing infrastructure to come under OpenTofu
+  management without having to be initially created by OpenTofu.
 
   The ADDR specified is the address to import the resource to. Please
   see the documentation online for resource addresses. The ID is a
@@ -307,7 +318,19 @@ Usage: opentf [global options] import [options] ADDR ID
 
 Options:
 
-  -config=path            Path to a directory of OpenTF configuration files
+  -compact-warnings       If OpenTofu produces any warnings that are not
+                          accompanied by errors, show them in a more compact
+                          form that includes only the summary messages.
+
+  -consolidate-warnings   If OpenTofu produces any warnings, no consolidation
+                          will be performed. All locations, for all warnings
+                          will be listed. Enabled by default.
+
+  -consolidate-errors     If OpenTofu produces any errors, no consolidation
+                          will be performed. All locations, for all errors
+                          will be listed. Disabled by default
+
+  -config=path            Path to a directory of OpenTofu configuration files
                           to use to configure the provider. Defaults to pwd.
                           If no config files are present, they must be provided
                           via the input prompts or env vars.
@@ -322,11 +345,11 @@ Options:
 
   -no-color               If specified, output won't contain any color.
 
-  -var 'foo=bar'          Set a variable in the OpenTF configuration. This
+  -var 'foo=bar'          Set a variable in the OpenTofu configuration. This
                           flag can be set multiple times. This is only useful
                           with the "-config" flag.
 
-  -var-file=foo           Set variables in the OpenTF configuration from
+  -var-file=foo           Set variables in the OpenTofu configuration from
                           a file. If "terraform.tfvars" or any ".auto.tfvars"
                           files are present, they will be automatically loaded.
 
@@ -341,11 +364,11 @@ Options:
 }
 
 func (c *ImportCommand) Synopsis() string {
-	return "Associate existing infrastructure with a OpenTF resource"
+	return "Associate existing infrastructure with a OpenTofu resource"
 }
 
 const importCommandInvalidAddressReference = `For information on valid syntax, see:
-https://www.placeholderplaceholderplaceholder.io/docs/cli/state/resource-addressing.html`
+https://opentofu.org/docs/cli/state/resource-addressing/`
 
 const importCommandMissingResourceFmt = `[reset][bold][red]Error:[reset][bold] resource address %q does not exist in the configuration.[reset]
 
@@ -359,5 +382,5 @@ resource %q %q {
 const importCommandSuccessMsg = `Import successful!
 
 The resources that were imported are shown above. These resources are now in
-your OpenTF state and will henceforth be managed by OpenTF.
+your OpenTofu state and will henceforth be managed by OpenTofu.
 `

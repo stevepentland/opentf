@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package schema
@@ -10,14 +12,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 )
 
 // MapFieldWriter writes data into a single map[string]string structure.
 type MapFieldWriter struct {
-	Schema map[string]*Schema
-
 	lock   sync.Mutex
+	Schema map[string]*Schema
 	result map[string]string
 }
 
@@ -128,7 +129,7 @@ func (w *MapFieldWriter) setList(
 
 	var vs []interface{}
 	if err := mapstructure.Decode(v, &vs); err != nil {
-		return fmt.Errorf("%s: %s", k, err)
+		return fmt.Errorf("%s: %w", k, err)
 	}
 
 	// Wipe the set from the current writer prior to writing if it exists.
@@ -215,7 +216,7 @@ func (w *MapFieldWriter) setObject(
 	// Set the entire object. First decode into a proper structure
 	var v map[string]interface{}
 	if err := mapstructure.Decode(value, &v); err != nil {
-		return fmt.Errorf("%s: %s", strings.Join(addr, "."), err)
+		return fmt.Errorf("%s: %w", strings.Join(addr, "."), err)
 	}
 
 	// Make space for additional elements in the address
@@ -255,24 +256,24 @@ func (w *MapFieldWriter) setPrimitive(
 	case TypeBool:
 		var b bool
 		if err := mapstructure.Decode(v, &b); err != nil {
-			return fmt.Errorf("%s: %s", k, err)
+			return fmt.Errorf("%s: %w", k, err)
 		}
 
 		set = strconv.FormatBool(b)
 	case TypeString:
 		if err := mapstructure.Decode(v, &set); err != nil {
-			return fmt.Errorf("%s: %s", k, err)
+			return fmt.Errorf("%s: %w", k, err)
 		}
 	case TypeInt:
 		var n int
 		if err := mapstructure.Decode(v, &n); err != nil {
-			return fmt.Errorf("%s: %s", k, err)
+			return fmt.Errorf("%s: %w", k, err)
 		}
 		set = strconv.FormatInt(int64(n), 10)
 	case TypeFloat:
 		var n float64
 		if err := mapstructure.Decode(v, &n); err != nil {
-			return fmt.Errorf("%s: %s", k, err)
+			return fmt.Errorf("%s: %w", k, err)
 		}
 		set = strconv.FormatFloat(float64(n), 'G', -1, 64)
 	default:

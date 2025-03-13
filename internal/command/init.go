@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -19,19 +21,22 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	backendInit "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/init"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/cloud"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/getproviders"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providercache"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
-	tfversion "github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/backend"
+	backendInit "github.com/opentofu/opentofu/internal/backend/init"
+	"github.com/opentofu/opentofu/internal/cloud"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/getproviders"
+	"github.com/opentofu/opentofu/internal/providercache"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
+	"github.com/opentofu/opentofu/internal/tofumigrate"
+	tfversion "github.com/opentofu/opentofu/version"
 )
 
 // InitCommand is a Command implementation that takes a Terraform
@@ -61,11 +66,23 @@ func (c *InitCommand) Run(args []string) int {
 	cmdFlags.BoolVar(&flagUpgrade, "upgrade", false, "")
 	cmdFlags.Var(&flagPluginPath, "plugin-dir", "plugin directory")
 	cmdFlags.StringVar(&flagLockfile, "lockfile", "", "Set a dependency lockfile mode")
-	cmdFlags.BoolVar(&c.Meta.ignoreRemoteVersion, "ignore-remote-version", false, "continue even if remote and local OpenTF versions are incompatible")
+	cmdFlags.BoolVar(&c.Meta.ignoreRemoteVersion, "ignore-remote-version", false, "continue even if remote and local OpenTofu versions are incompatible")
 	cmdFlags.StringVar(&testsDirectory, "test-directory", "tests", "test-directory")
+	cmdFlags.BoolVar(&c.outputInJSON, "json", false, "json")
 	cmdFlags.Usage = func() { c.Ui.Error(c.Help()) }
 	if err := cmdFlags.Parse(args); err != nil {
 		return 1
+	}
+
+	if c.outputInJSON {
+		c.Meta.color = false
+		c.Meta.Color = false
+		c.oldUi = c.Ui
+		c.Ui = &WrappedUi{
+			cliUi:        c.oldUi,
+			jsonView:     views.NewJSONView(c.View),
+			outputInJSON: true,
+		}
 	}
 
 	backendFlagSet := arguments.FlagIsSet(cmdFlags, "backend")
@@ -100,7 +117,7 @@ func (c *InitCommand) Run(args []string) int {
 
 	// Validate the arg count and get the working directory
 	args = cmdFlags.Args()
-	path, err := ModulePath(args)
+	path, err := modulePath(args)
 	if err != nil {
 		c.Ui.Error(err.Error())
 		return 1
@@ -163,7 +180,7 @@ func (c *InitCommand) Run(args []string) int {
 	// the backend with an empty directory.
 	empty, err := configs.IsEmptyDir(path)
 	if err != nil {
-		diags = diags.Append(fmt.Errorf("Error checking configuration: %s", err))
+		diags = diags.Append(fmt.Errorf("Error checking configuration: %w", err))
 		c.showDiagnostics(diags)
 		return 1
 	}
@@ -187,6 +204,21 @@ func (c *InitCommand) Run(args []string) int {
 		return 1
 	}
 
+	var enc encryption.Encryption
+	// If backend flag is explicitly set to false i.e -backend=false, we disable state and plan encryption
+	if backendFlagSet && !flagBackend {
+		enc = encryption.Disabled()
+	} else {
+		// Load the encryption configuration
+		var encDiags tfdiags.Diagnostics
+		enc, encDiags = c.EncryptionFromModule(rootModEarly)
+		diags = diags.Append(encDiags)
+		if encDiags.HasErrors() {
+			c.showDiagnostics(diags)
+			return 1
+		}
+	}
+
 	var back backend.Backend
 
 	// There may be config errors or backend init errors but these will be shown later _after_
@@ -196,12 +228,12 @@ func (c *InitCommand) Run(args []string) int {
 
 	switch {
 	case flagCloud && rootModEarly.CloudConfig != nil:
-		back, backendOutput, backDiags = c.initCloud(ctx, rootModEarly, flagConfigExtra)
+		back, backendOutput, backDiags = c.initCloud(ctx, rootModEarly, flagConfigExtra, enc)
 	case flagBackend:
-		back, backendOutput, backDiags = c.initBackend(ctx, rootModEarly, flagConfigExtra)
+		back, backendOutput, backDiags = c.initBackend(ctx, rootModEarly, flagConfigExtra, enc)
 	default:
 		// load the previously-stored backend config
-		back, backDiags = c.Meta.backendFromState(ctx)
+		back, backDiags = c.Meta.backendFromState(ctx, enc.State())
 	}
 	if backendOutput {
 		header = true
@@ -249,26 +281,25 @@ func (c *InitCommand) Run(args []string) int {
 	// whole configuration tree.
 	config, confDiags := c.loadConfigWithTests(path, testsDirectory)
 	// configDiags will be handled after the version constraint check, since an
-	// incorrect version of terraform may be producing errors for configuration
+	// incorrect version of tofu may be producing errors for configuration
 	// constructs added in later versions.
 
 	// Before we go further, we'll check to make sure none of the modules in
-	// the configuration declare that they don't support this Terraform
+	// the configuration declare that they don't support this OpenTofu
 	// version, so we can produce a version-related error message rather than
 	// potentially-confusing downstream errors.
-	versionDiags := opentf.CheckCoreVersionRequirements(config)
+	versionDiags := tofu.CheckCoreVersionRequirements(config)
 	if versionDiags.HasErrors() {
 		c.showDiagnostics(versionDiags)
 		return 1
 	}
 
 	// We've passed the core version check, now we can show errors from the
-	// configuration and backend initialisation.
+	// configuration and backend initialization.
 
 	// Now, we can check the diagnostics from the early configuration and the
 	// backend.
-	diags = diags.Append(earlyConfDiags)
-	diags = diags.Append(backDiags)
+	diags = diags.Append(earlyConfDiags.StrictDeduplicateMerge(backDiags))
 	if earlyConfDiags.HasErrors() {
 		c.Ui.Error(strings.TrimSpace(errInitConfigError))
 		c.showDiagnostics(diags)
@@ -300,6 +331,18 @@ func (c *InitCommand) Run(args []string) int {
 				return 1
 			}
 		}
+	}
+
+	if state != nil {
+		// Since we now have the full configuration loaded, we can use it to migrate the in-memory state view
+		// prior to fetching providers.
+		migratedState, migrateDiags := tofumigrate.MigrateStateProviderAddresses(config, state)
+		diags = diags.Append(migrateDiags)
+		if migrateDiags.HasErrors() {
+			c.showDiagnostics(diags)
+			return 1
+		}
+		state = migratedState
 	}
 
 	// Now that we have loaded all modules, check the module tree for missing providers.
@@ -390,7 +433,7 @@ func (c *InitCommand) getModules(ctx context.Context, path, testsDir string, ear
 			diags = diags.Append(tfdiags.Sourceless(
 				tfdiags.Error,
 				"Failed to read module manifest",
-				fmt.Sprintf("After installing modules, OpenTF could not re-read the manifest of installed modules. This is a bug in OpenTF. %s.", err),
+				fmt.Sprintf("After installing modules, OpenTofu could not re-read the manifest of installed modules. This is a bug in OpenTofu. %s.", err),
 			))
 		}
 	}
@@ -398,18 +441,18 @@ func (c *InitCommand) getModules(ctx context.Context, path, testsDir string, ear
 	return true, installAbort, diags
 }
 
-func (c *InitCommand) initCloud(ctx context.Context, root *configs.Module, extraConfig rawFlags) (be backend.Backend, output bool, diags tfdiags.Diagnostics) {
-	ctx, span := tracer.Start(ctx, "initialize Terraform Cloud")
-	_ = ctx // prevent staticcheck from complaining to avoid a maintenence hazard of having the wrong ctx in scope here
+func (c *InitCommand) initCloud(ctx context.Context, root *configs.Module, extraConfig rawFlags, enc encryption.Encryption) (be backend.Backend, output bool, diags tfdiags.Diagnostics) {
+	ctx, span := tracer.Start(ctx, "initialize cloud backend")
+	_ = ctx // prevent staticcheck from complaining to avoid a maintenance hazard of having the wrong ctx in scope here
 	defer span.End()
 
-	c.Ui.Output(c.Colorize().Color("\n[reset][bold]Initializing Terraform Cloud..."))
+	c.Ui.Output(c.Colorize().Color("\n[reset][bold]Initializing cloud backend..."))
 
 	if len(extraConfig.AllItems()) != 0 {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Invalid command-line option",
-			"The -backend-config=... command line option is only for state backends, and is not applicable to Terraform Cloud-based configurations.\n\nTo change the set of workspaces associated with this configuration, edit the Cloud configuration block in the root module.",
+			"The -backend-config=... command line option is only for state backends, and is not applicable to cloud backend-based configurations.\n\nTo change the set of workspaces associated with this configuration, edit the Cloud configuration block in the root module.",
 		))
 		return nil, true, diags
 	}
@@ -421,14 +464,14 @@ func (c *InitCommand) initCloud(ctx context.Context, root *configs.Module, extra
 		Init:   true,
 	}
 
-	back, backDiags := c.Backend(opts)
+	back, backDiags := c.Backend(opts, enc.State())
 	diags = diags.Append(backDiags)
 	return back, true, diags
 }
 
-func (c *InitCommand) initBackend(ctx context.Context, root *configs.Module, extraConfig rawFlags) (be backend.Backend, output bool, diags tfdiags.Diagnostics) {
+func (c *InitCommand) initBackend(ctx context.Context, root *configs.Module, extraConfig rawFlags, enc encryption.Encryption) (be backend.Backend, output bool, diags tfdiags.Diagnostics) {
 	ctx, span := tracer.Start(ctx, "initialize backend")
-	_ = ctx // prevent staticcheck from complaining to avoid a maintenence hazard of having the wrong ctx in scope here
+	_ = ctx // prevent staticcheck from complaining to avoid a maintenance hazard of having the wrong ctx in scope here
 	defer span.End()
 
 	c.Ui.Output(c.Colorize().Color("\n[reset][bold]Initializing the backend..."))
@@ -441,7 +484,7 @@ func (c *InitCommand) initBackend(ctx context.Context, root *configs.Module, ext
 			diags = diags.Append(&hcl.Diagnostic{
 				Severity: hcl.DiagError,
 				Summary:  "Unsupported backend type",
-				Detail:   fmt.Sprintf("There is no explicit backend type named %q. To configure Terraform Cloud, declare a 'cloud' block instead.", backendType),
+				Detail:   fmt.Sprintf("There is no explicit backend type named %q. To configure cloud backend, declare a 'cloud' block instead.", backendType),
 				Subject:  &root.Backend.TypeRange,
 			})
 			return nil, true, diags
@@ -463,7 +506,7 @@ func (c *InitCommand) initBackend(ctx context.Context, root *configs.Module, ext
 			return nil, true, diags
 		}
 
-		b := bf()
+		b := bf(nil) // This is only used to get the schema, encryption should panic if attempted
 		backendSchema := b.ConfigSchema()
 		backendConfig = root.Backend
 
@@ -504,7 +547,7 @@ the backend configuration is present and valid.
 		Init:           true,
 	}
 
-	back, backDiags := c.Backend(opts)
+	back, backDiags := c.Backend(opts, enc.State())
 	diags = diags.Append(backDiags)
 	return back, true, diags
 }
@@ -515,15 +558,15 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 	ctx, span := tracer.Start(ctx, "install providers")
 	defer span.End()
 
-	// Dev overrides cause the result of "terraform init" to be irrelevant for
+	// Dev overrides cause the result of "tofu init" to be irrelevant for
 	// any overridden providers, so we'll warn about it to avoid later
-	// confusion when Terraform ends up using a different provider than the
+	// confusion when OpenTofu ends up using a different provider than the
 	// lock file called for.
 	diags = diags.Append(c.providerDevOverrideInitWarnings())
 
 	// First we'll collect all the provider dependencies we can see in the
 	// configuration and the state.
-	reqs, hclDiags := config.ProviderRequirements()
+	reqs, qualifs, hclDiags := config.ProviderRequirements()
 	diags = diags.Append(hclDiags)
 	if hclDiags.HasErrors() {
 		return false, true, diags
@@ -533,7 +576,13 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 		reqs = reqs.Merge(stateReqs)
 	}
 
+	potentialProviderConflicts := make(map[string][]string)
+
 	for providerAddr := range reqs {
+		if providerAddr.Namespace == "hashicorp" || providerAddr.Namespace == "opentofu" {
+			potentialProviderConflicts[providerAddr.Type] = append(potentialProviderConflicts[providerAddr.Type], providerAddr.ForDisplay())
+		}
+
 		if providerAddr.IsLegacy() {
 			diags = diags.Append(tfdiags.Sourceless(
 				tfdiags.Error,
@@ -541,6 +590,20 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 				fmt.Sprintf(
 					"This configuration or its associated state refers to the unqualified provider %q.\n\nYou must complete the Terraform 0.13 upgrade process before upgrading to later versions.",
 					providerAddr.Type,
+				),
+			))
+		}
+	}
+
+	for name, addrs := range potentialProviderConflicts {
+		if len(addrs) > 1 {
+			diags = diags.Append(tfdiags.Sourceless(
+				tfdiags.Warning,
+				"Potential provider misconfiguration",
+				fmt.Sprintf(
+					"OpenTofu has detected multiple providers of type %s (%s) which may be a misconfiguration.\n\nIf this is intentional you can ignore this warning",
+					name,
+					strings.Join(addrs, ", "),
 				),
 			))
 		}
@@ -560,7 +623,7 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 		inst = c.providerInstaller()
 	} else {
 		// If the user passes at least one -plugin-dir then that circumvents
-		// the usual sources and forces Terraform to consult only the given
+		// the usual sources and forces OpenTofu to consult only the given
 		// directories. Anything not available in one of those directories
 		// is not available for installation.
 		source := c.providerCustomLocalDirectorySource(pluginDirs)
@@ -592,7 +655,7 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 			c.Ui.Info(fmt.Sprintf("- Using previously-installed %s v%s", provider.ForDisplay(), selectedVersion))
 		},
 		BuiltInProviderAvailable: func(provider addrs.Provider) {
-			c.Ui.Info(fmt.Sprintf("- %s is built in to OpenTF", provider.ForDisplay()))
+			c.Ui.Info(fmt.Sprintf("- %s is built in to OpenTofu", provider.ForDisplay()))
 		},
 		BuiltInProviderFailure: func(provider addrs.Provider, err error) {
 			diags = diags.Append(tfdiags.Sourceless(
@@ -636,14 +699,21 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 			case getproviders.ErrRegistryProviderNotKnown:
 				// We might be able to suggest an alternative provider to use
 				// instead of this one.
-				suggestion := fmt.Sprintf("\n\nAll modules should specify their required_providers so that external consumers will get the correct providers when using a module. To see which modules are currently depending on %s, run the following command:\n    opentf providers", provider.ForDisplay())
+				suggestion := fmt.Sprintf("\n\nAll modules should specify their required_providers so that external consumers will get the correct providers when using a module. To see which modules are currently depending on %s, run the following command:\n    tofu providers", provider.ForDisplay())
 				alternative := getproviders.MissingProviderSuggestion(ctx, provider, inst.ProviderSource(), reqs)
 				if alternative != provider {
 					suggestion = fmt.Sprintf(
-						"\n\nDid you intend to use %s? If so, you must specify that source address in each module which requires that provider. To see which modules are currently depending on %s, run the following command:\n    opentf providers",
+						"\n\nDid you intend to use %s? If so, you must specify that source address in each module which requires that provider. To see which modules are currently depending on %s, run the following command:\n    tofu providers",
 						alternative.ForDisplay(), provider.ForDisplay(),
 					)
 				}
+
+				if provider.Hostname == addrs.DefaultProviderRegistryHost {
+					suggestion += "\n\nIf you believe this provider is missing from the registry, please submit a issue on the OpenTofu Registry https://github.com/opentofu/registry/issues/new/choose"
+				}
+
+				warnDiags := warnOnFailedImplicitProvReference(provider, qualifs)
+				diags = diags.Append(warnDiags)
 
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
@@ -666,7 +736,7 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 					diags = diags.Append(tfdiags.Sourceless(
 						tfdiags.Error,
 						"Invalid provider registry host",
-						fmt.Sprintf("The given source address %q specifies a GitHub repository rather than a OpenTF provider. Refer to the documentation of the provider to find the correct source address to use.",
+						fmt.Sprintf("The given source address %q specifies a GitHub repository rather than a OpenTofu provider. Refer to the documentation of the provider to find the correct source address to use.",
 							provider.String(),
 						),
 					))
@@ -675,7 +745,7 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 					diags = diags.Append(tfdiags.Sourceless(
 						tfdiags.Error,
 						"Invalid provider registry host",
-						fmt.Sprintf("The host %q given in provider source address %q does not offer a OpenTF provider registry that is compatible with this OpenTF version, but it may be compatible with a different OpenTF version.",
+						fmt.Sprintf("The host %q given in provider source address %q does not offer a OpenTofu provider registry that is compatible with this OpenTofu version, but it may be compatible with a different OpenTofu version.",
 							errorTy.Hostname, provider.String(),
 						),
 					))
@@ -684,7 +754,7 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 					diags = diags.Append(tfdiags.Sourceless(
 						tfdiags.Error,
 						"Invalid provider registry host",
-						fmt.Sprintf("The host %q given in provider source address %q does not offer a OpenTF provider registry.",
+						fmt.Sprintf("The host %q given in provider source address %q does not offer a OpenTofu provider registry.",
 							errorTy.Hostname, provider.String(),
 						),
 					))
@@ -698,8 +768,8 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 			default:
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
-					"Failed to query available provider packages",
-					fmt.Sprintf("Could not retrieve the list of available versions for provider %s: %s",
+					"Failed to resolve provider packages",
+					fmt.Sprintf("Could not resolve provider %s: %s",
 						provider.ForDisplay(), err,
 					),
 				))
@@ -769,7 +839,7 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 						tfdiags.Error,
 						summaryIncompatible,
 						fmt.Sprintf(
-							"Your chosen provider mirror at %s does not have a %s v%s package available for your current platform, %s.\n\nProvider releases are separate from OpenTF CLI releases, so this provider might not support your current platform. Alternatively, the mirror itself might have only a subset of the plugin packages available in the origin registry, at %s.",
+							"Your chosen provider mirror at %s does not have a %s v%s package available for your current platform, %s.\n\nProvider releases are separate from OpenTofu CLI releases, so this provider might not support your current platform. Alternatively, the mirror itself might have only a subset of the plugin packages available in the origin registry, at %s.",
 							err.MirrorURL, err.Provider, err.Version, err.Platform,
 							err.Provider.Hostname,
 						),
@@ -779,7 +849,7 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 						tfdiags.Error,
 						summaryIncompatible,
 						fmt.Sprintf(
-							"Provider %s v%s does not have a package available for your current platform, %s.\n\nProvider releases are separate from OpenTF CLI releases, so not all providers are available for all platforms. Other versions of this provider may have different platforms supported.",
+							"Provider %s v%s does not have a package available for your current platform, %s.\n\nProvider releases are separate from OpenTofu CLI releases, so not all providers are available for all platforms. Other versions of this provider may have different platforms supported.",
 							err.Provider, err.Version, err.Platform,
 						),
 					))
@@ -816,13 +886,17 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 				keyID = c.Colorize().Color(fmt.Sprintf(", key ID [reset][bold]%s[reset]", keyID))
 			}
 
-			c.Ui.Info(fmt.Sprintf("- Installed %s v%s (%s%s)", provider.ForDisplay(), version, authResult, keyID))
+			if authResult != nil && authResult.SigningSkipped() {
+				c.Ui.Warn(fmt.Sprintf("- Installed %s v%s. Signature validation was skipped due to the registry not containing GPG keys for this provider", provider.ForDisplay(), version))
+			} else {
+				c.Ui.Info(fmt.Sprintf("- Installed %s v%s (%s%s)", provider.ForDisplay(), version, authResult, keyID))
+			}
 		},
 		ProvidersLockUpdated: func(provider addrs.Provider, version getproviders.Version, localHashes []getproviders.Hash, signedHashes []getproviders.Hash, priorHashes []getproviders.Hash) {
 			// We're going to use this opportunity to track if we have any
 			// "incomplete" installs of providers. An incomplete install is
 			// when we are only going to write the local hashes into our lock
-			// file which means a `terraform init` command will fail in future
+			// file which means a `tofu init` command will fail in future
 			// when used on machines of a different architecture.
 			//
 			// We want to print a warning about this.
@@ -864,7 +938,7 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 			if thirdPartySigned {
 				c.Ui.Info(fmt.Sprintf("\nProviders are signed by their developers.\n" +
 					"If you'd like to know more about provider signing, you can read about it here:\n" +
-					"https://www.placeholderplaceholderplaceholder.io/docs/cli/plugins/signing.html"))
+					"https://opentofu.org/docs/cli/plugins/signing/"))
 			}
 		},
 	}
@@ -906,12 +980,12 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 	if !newLocks.Equal(previousLocks) {
 		// if readonly mode
 		if flagLockfile == "readonly" {
-			// check if required provider dependences change
+			// check if required provider dependencies change
 			if !newLocks.EqualProviderAddress(previousLocks) {
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
 					`Provider dependency changes detected`,
-					`Changes to the required provider dependencies were detected, but the lock file is read-only. To use and record these requirements, run "opentf init" without the "-lockfile=readonly" flag.`,
+					`Changes to the required provider dependencies were detected, but the lock file is read-only. To use and record these requirements, run "tofu init" without the "-lockfile=readonly" flag.`,
 				))
 				return true, true, diags
 			}
@@ -921,7 +995,7 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 			diags = diags.Append(tfdiags.Sourceless(
 				tfdiags.Warning,
 				`Provider lock file not updated`,
-				`Changes to the provider selections were detected, but not saved in the .terraform.lock.hcl file. To record these selections, run "opentf init" without the "-lockfile=readonly" flag.`,
+				`Changes to the provider selections were detected, but not saved in the .terraform.lock.hcl file. To record these selections, run "tofu init" without the "-lockfile=readonly" flag.`,
 			))
 			return true, false, diags
 		}
@@ -944,19 +1018,19 @@ func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, 
 
 		if previousLocks.Empty() {
 			// A change from empty to non-empty is special because it suggests
-			// we're running "terraform init" for the first time against a
+			// we're running "tofu init" for the first time against a
 			// new configuration. In that case we'll take the opportunity to
 			// say a little about what the dependency lock file is, for new
 			// users or those who are upgrading from a previous Terraform
 			// version that didn't have dependency lock files.
 			c.Ui.Output(c.Colorize().Color(`
-OpenTF has created a lock file [bold].terraform.lock.hcl[reset] to record the provider
+OpenTofu has created a lock file [bold].terraform.lock.hcl[reset] to record the provider
 selections it made above. Include this file in your version control repository
-so that OpenTF can guarantee to make the same selections by default when
-you run "opentf init" in the future.`))
+so that OpenTofu can guarantee to make the same selections by default when
+you run "tofu init" in the future.`))
 		} else {
 			c.Ui.Output(c.Colorize().Color(`
-OpenTF has made some changes to the provider dependency selections recorded
+OpenTofu has made some changes to the provider dependency selections recorded
 in the .terraform.lock.hcl file. Review those changes and commit them to your
 version control system if they represent changes you intended to make.`))
 		}
@@ -966,6 +1040,43 @@ version control system if they represent changes you intended to make.`))
 	}
 
 	return true, false, diags
+}
+
+// warnOnFailedImplicitProvReference returns a warn diagnostic when the downloader fails to fetch a provider that is implicitly referenced.
+// In other words, if the failed to download provider is having no required_providers entry, this function is trying to give to the user
+// more information on the source of the issue and gives also instructions on how to fix it.
+func warnOnFailedImplicitProvReference(provider addrs.Provider, qualifs *getproviders.ProvidersQualification) tfdiags.Diagnostics {
+	if _, ok := qualifs.Explicit[provider]; ok {
+		return nil
+	}
+	refs, ok := qualifs.Implicit[provider]
+	if !ok || len(refs) == 0 {
+		// If there is no implicit reference for that provider, do not write the warn, let just the error to be returned.
+		return nil
+	}
+
+	// NOTE: if needed, in the future we can use the rest of the "refs" to print all the culprits or at least to give
+	// a hint on how many resources are causing this
+	ref := refs[0]
+	if ref.ProviderAttribute {
+		return nil
+	}
+	details := fmt.Sprintf(
+		implicitProviderReferenceBody,
+		ref.CfgRes.String(),
+		provider.Type,
+		provider.ForDisplay(),
+		provider.Type,
+		ref.CfgRes.Resource.Type,
+		provider.Type,
+	)
+	return tfdiags.Diagnostics{}.Append(
+		&hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Subject:  ref.Ref.ToHCL().Ptr(),
+			Summary:  implicitProviderReferenceHead,
+			Detail:   details,
+		})
 }
 
 // backendConfigOverrideBody interprets the raw values of -backend-config
@@ -1098,14 +1209,14 @@ func (c *InitCommand) AutocompleteFlags() complete.Flags {
 
 func (c *InitCommand) Help() string {
 	helpText := `
-Usage: opentf [global options] init [options]
+Usage: tofu [global options] init [options]
 
-  Initialize a new or existing OpenTF working directory by creating
+  Initialize a new or existing OpenTofu working directory by creating
   initial files, loading any remote state, downloading modules, etc.
 
   This is the first command that should be run for any new or existing
-  OpenTF configuration per machine. This sets up all the local data
-  necessary to run OpenTF that is typically not committed to version
+  OpenTofu configuration per machine. This sets up all the local data
+  necessary to run OpenTofu that is typically not committed to version
   control.
 
   This command is always safe to run multiple times. Though subsequent runs
@@ -1115,7 +1226,7 @@ Usage: opentf [global options] init [options]
 
 Options:
 
-  -backend=false          Disable backend or Terraform Cloud initialization
+  -backend=false          Disable backend or cloud backend initialization
                           for this configuration and use what was previously
                           initialized instead.
 
@@ -1129,8 +1240,20 @@ Options:
                           times. The backend type must be in the configuration
                           itself.
 
+  -compact-warnings       If OpenTofu produces any warnings that are not
+                          accompanied by errors, show them in a more compact
+                          form that includes only the summary messages.
+
+  -consolidate-warnings   If OpenTofu produces any warnings, no consolidation
+                          will be performed. All locations, for all warnings
+                          will be listed. Enabled by default.
+
+  -consolidate-errors     If OpenTofu produces any errors, no consolidation
+                          will be performed. All locations, for all errors
+                          will be listed. Disabled by default
+
   -force-copy             Suppress prompts about copying state data when
-                          initializating a new state backend. This is
+                          initializing a new state backend. This is
                           equivalent to providing a "yes" to all confirmation
                           prompts.
 
@@ -1170,14 +1293,29 @@ Options:
   -lockfile=MODE          Set a dependency lockfile mode.
                           Currently only "readonly" is valid.
 
-  -ignore-remote-version  A rare option used for Terraform Cloud and the remote backend
+  -ignore-remote-version  A rare option used for cloud backend and the remote backend
                           only. Set this to ignore checking that the local and remote
-                          OpenTF versions use compatible state representations, making
+                          OpenTofu versions use compatible state representations, making
                           an operation proceed even when there is a potential mismatch.
-                          See the documentation on configuring OpenTF with
-                          Terraform Cloud for more information.
+                          See the documentation on configuring OpenTofu with
+                          cloud backend for more information.
 
-  -test-directory=path    Set the OpenTF test directory, defaults to "tests".
+  -test-directory=path    Set the OpenTofu test directory, defaults to "tests". When set, the
+                          test command will search for test files in the current directory and
+                          in the one specified by the flag.
+
+  -json                   Produce output in a machine-readable JSON format, 
+                          suitable for use in text editor integrations and other 
+                          automated systems. Always disables color.
+
+  -var 'foo=bar'          Set a value for one of the input variables in the root
+                          module of the configuration. Use this option more than
+                          once to set more than one variable.
+
+  -var-file=filename      Load variable values from the given file, in addition
+                          to the default files terraform.tfvars and *.auto.tfvars.
+                          Use this option more than once to include more than one
+                          variables file.
 
 `
 	return strings.TrimSpace(helpText)
@@ -1188,11 +1326,11 @@ func (c *InitCommand) Synopsis() string {
 }
 
 const errInitConfigError = `
-[reset]OpenTF encountered problems during initialisation, including problems
+[reset]OpenTofu encountered problems during initialization, including problems
 with the configuration, described below.
 
-The OpenTF configuration must be valid before initialization so that
-OpenTF can determine which modules and providers need to be installed.
+The OpenTofu configuration must be valid before initialization so that
+OpenTofu can determine which modules and providers need to be installed.
 `
 
 const errInitCopyNotEmpty = `
@@ -1204,64 +1342,64 @@ To initialize the configuration already in this working directory, omit the
 `
 
 const outputInitEmpty = `
-[reset][bold]OpenTF initialized in an empty directory![reset]
+[reset][bold]OpenTofu initialized in an empty directory![reset]
 
-The directory has no OpenTF configuration files. You may begin working
-with OpenTF immediately by creating OpenTF configuration files.
+The directory has no OpenTofu configuration files. You may begin working
+with OpenTofu immediately by creating OpenTofu configuration files.
 `
 
 const outputInitSuccess = `
-[reset][bold][green]OpenTF has been successfully initialized![reset][green]
+[reset][bold][green]OpenTofu has been successfully initialized![reset][green]
 `
 
 const outputInitSuccessCloud = `
-[reset][bold][green]Terraform Cloud has been successfully initialized![reset][green]
+[reset][bold][green]Cloud backend has been successfully initialized![reset][green]
 `
 
 const outputInitSuccessCLI = `[reset][green]
-You may now begin working with OpenTF. Try running "opentf plan" to see
-any changes that are required for your infrastructure. All OpenTF commands
+You may now begin working with OpenTofu. Try running "tofu plan" to see
+any changes that are required for your infrastructure. All OpenTofu commands
 should now work.
 
-If you ever set or change modules or backend configuration for OpenTF,
+If you ever set or change modules or backend configuration for OpenTofu,
 rerun this command to reinitialize your working directory. If you forget, other
 commands will detect it and remind you to do so if necessary.
 `
 
 const outputInitSuccessCLICloud = `[reset][green]
-You may now begin working with Terraform Cloud. Try running "opentf plan" to
+You may now begin working with cloud backend. Try running "tofu plan" to
 see any changes that are required for your infrastructure.
 
-If you ever set or change modules or OpenTF Settings, run "opentf init"
+If you ever set or change modules or OpenTofu Settings, run "tofu init"
 again to reinitialize your working directory.
 `
 
 // providerProtocolTooOld is a message sent to the CLI UI if the provider's
-// supported protocol versions are too old for the user's version of terraform,
+// supported protocol versions are too old for the user's version of tofu,
 // but a newer version of the provider is compatible.
-const providerProtocolTooOld = `Provider %q v%s is not compatible with OpenTF %s.
+const providerProtocolTooOld = `Provider %q v%s is not compatible with OpenTofu %s.
 Provider version %s is the latest compatible version. Select it with the following version constraint:
 	version = %q
 
-OpenTF checked all of the plugin versions matching the given constraint:
+OpenTofu checked all of the plugin versions matching the given constraint:
 	%s
 
-Consult the documentation for this provider for more information on compatibility between provider and OpenTF versions.
+Consult the documentation for this provider for more information on compatibility between provider and OpenTofu versions.
 `
 
 // providerProtocolTooNew is a message sent to the CLI UI if the provider's
-// supported protocol versions are too new for the user's version of terraform,
-// and the user could either upgrade terraform or choose an older version of the
+// supported protocol versions are too new for the user's version of tofu,
+// and the user could either upgrade tofu or choose an older version of the
 // provider.
-const providerProtocolTooNew = `Provider %q v%s is not compatible with OpenTF %s.
+const providerProtocolTooNew = `Provider %q v%s is not compatible with OpenTofu %s.
 You need to downgrade to v%s or earlier. Select it with the following constraint:
 	version = %q
 
-OpenTF checked all of the plugin versions matching the given constraint:
+OpenTofu checked all of the plugin versions matching the given constraint:
 	%s
 
-Consult the documentation for this provider for more information on compatibility between provider and OpenTF versions.
-Alternatively, upgrade to the latest version of OpenTF for compatibility with newer provider releases.
+Consult the documentation for this provider for more information on compatibility between provider and OpenTofu versions.
+Alternatively, upgrade to the latest version of OpenTofu for compatibility with newer provider releases.
 `
 
 // No version of the provider is compatible.
@@ -1273,11 +1411,22 @@ const incompleteLockFileInformationHeader = `Incomplete lock file information fo
 
 // incompleteLockFileInformationBody is the body of text displayed to users when
 // the lock file has only recorded local hashes.
-const incompleteLockFileInformationBody = `Due to your customized provider installation methods, OpenTF was forced to calculate lock file checksums locally for the following providers:
+const incompleteLockFileInformationBody = `Due to your customized provider installation methods, OpenTofu was forced to calculate lock file checksums locally for the following providers:
   - %s
 
-The current .terraform.lock.hcl file only includes checksums for %s, so OpenTF running on another platform will fail to install these providers.
+The current .terraform.lock.hcl file only includes checksums for %s, so OpenTofu running on another platform will fail to install these providers.
 
 To calculate additional checksums for another platform, run:
-  opentf providers lock -platform=linux_amd64
+  tofu providers lock -platform=linux_amd64
 (where linux_amd64 is the platform to generate)`
+
+const implicitProviderReferenceHead = `Automatically-inferred provider dependency`
+
+const implicitProviderReferenceBody = `Due to the prefix of the resource type name OpenTofu guessed that you intended to associate %s with a provider whose local name is "%s", but that name is not declared in this module's required_providers block. OpenTofu therefore guessed that you intended to use %s, but that provider does not exist.
+
+Make at least one of the following changes to tell OpenTofu which provider to use:
+
+- Add a declaration for local name "%s" to this module's required_providers block, specifying the full source address for the provider you intended to use.
+- Verify that "%s" is the correct resource type name to use. Did you omit a prefix which would imply the correct provider?
+- Use a "provider" argument within this resource block to override OpenTofu's automatic selection of the local name "%s".
+`

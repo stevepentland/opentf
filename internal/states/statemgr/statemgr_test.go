@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package statemgr
@@ -11,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/placeholderplaceholderplaceholder/opentf/internal/logging"
+	_ "github.com/opentofu/opentofu/internal/logging"
 )
 
 func TestNewLockInfo(t *testing.T) {
@@ -61,7 +63,7 @@ func TestLockWithContext(t *testing.T) {
 		t.Fatal("lock should have failed immediately")
 	}
 
-	// block until LockwithContext has made a first attempt
+	// block until LockWithContext has made a first attempt
 	attempted := make(chan struct{})
 	postLockHook = func() {
 		close(attempted)
@@ -85,7 +87,7 @@ func TestLockWithContext(t *testing.T) {
 		t.Fatal("lock should have completed within 2s:", err)
 	}
 
-	// ensure the goruotine completes
+	// ensure the goroutine completes
 	<-unlocked
 	if unlockErr != nil {
 		t.Fatal(unlockErr)

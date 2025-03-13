@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package remote
@@ -9,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -19,10 +20,10 @@ import (
 
 	tfe "github.com/hashicorp/go-tfe"
 	version "github.com/hashicorp/go-version"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/logging"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/logging"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 var planConfigurationVersionsPollInterval = 500 * time.Millisecond
@@ -87,7 +88,7 @@ func (b *Remote) opPlan(stopCtx, cancelCtx context.Context, op *backend.Operatio
 					"Currently the only to way to pass variables to the remote backend is by "+
 					"creating a '*.auto.tfvars' variables file. This file will automatically "+
 					"be loaded by the \"remote\" backend when the workspace is configured to use "+
-					"OpenTF v0.10.0 or later.\n\nAdditionally you can also set variables on "+
+					"OpenTofu v0.10.0 or later.\n\nAdditionally you can also set variables on "+
 					"the workspace in the web UI:\nhttps://%s/app/%s/%s/variables",
 				b.hostname, b.organization, op.Workspace,
 			),
@@ -102,7 +103,7 @@ func (b *Remote) opPlan(stopCtx, cancelCtx context.Context, op *backend.Operatio
 				`would mark everything for destruction, which is normally not what is desired. `+
 				`If you would like to destroy everything, please run plan with the "-destroy" `+
 				`flag or create a single empty configuration file. Otherwise, please create `+
-				`a OpenTF configuration file in the path being executed and try again.`,
+				`a OpenTofu configuration file in the path being executed and try again.`,
 		))
 	}
 
@@ -125,6 +126,14 @@ func (b *Remote) opPlan(stopCtx, cancelCtx context.Context, op *backend.Operatio
 				),
 			))
 		}
+	}
+
+	if len(op.Excludes) != 0 {
+		diags = diags.Append(tfdiags.Sourceless(
+			tfdiags.Error,
+			"-exclude option is not supported",
+			"The -exclude option is not currently supported for remote plans.",
+		))
 	}
 
 	if !op.PlanRefresh {
@@ -230,7 +239,7 @@ func (b *Remote) plan(stopCtx, cancelCtx context.Context, op *backend.Operation,
 The remote workspace is configured to work with configuration at
 %s relative to the target repository.
 
-OpenTF will upload the contents of the following directory,
+OpenTofu will upload the contents of the following directory,
 excluding files or directories as defined by a .terraformignore file
 at %s/.terraformignore (if it is present),
 in order to capture the filesystem context the remote workspace expects:
@@ -243,7 +252,7 @@ in order to capture the filesystem context the remote workspace expects:
 		// We did a check earlier to make sure we either have a config dir,
 		// or the plan is run with -destroy. So this else clause will only
 		// be executed when we are destroying and doesn't need the config.
-		configDir, err = ioutil.TempDir("", "tf")
+		configDir, err = os.MkdirTemp("", "tf")
 		if err != nil {
 			return nil, generalError("Failed to create temporary directory", err)
 		}
@@ -328,11 +337,13 @@ in order to capture the filesystem context the remote workspace expects:
 		return r, generalError("Failed to create run", err)
 	}
 
+	panicHandler := logging.PanicHandlerWithTraceFn()
+
 	// When the lock timeout is set, if the run is still pending and
 	// cancellable after that period, we attempt to cancel it.
 	if lockTimeout := op.StateLocker.Timeout(); lockTimeout > 0 {
 		go func() {
-			defer logging.PanicHandler()
+			defer panicHandler()
 
 			select {
 			case <-stopCtx.Done():
@@ -352,7 +363,7 @@ in order to capture the filesystem context the remote workspace expects:
 						b.CLI.Output(b.Colorize().Color(strings.TrimSpace(lockTimeoutErr)))
 					}
 
-					// We abuse the auto aprove flag to indicate that we do not
+					// We abuse the auto approve flag to indicate that we do not
 					// want to ask if the remote operation should be canceled.
 					op.AutoApprove = true
 

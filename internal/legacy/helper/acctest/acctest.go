@@ -1,5 +1,7 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
-// Package acctest contains for Terraform Acceptance Tests
+// Package acctest contains for OpenTofu Acceptance Tests
 package acctest

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package plans
@@ -7,8 +9,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/states"
 )
 
 // ChangesSync is a wrapper around a Changes that provides a concurrency-safe
@@ -124,9 +126,8 @@ func (cs *ChangesSync) RemoveResourceInstanceChange(addr addrs.AbsResourceInstan
 		dk = realDK
 	}
 
-	addrStr := addr.String()
 	for i, r := range cs.changes.Resources {
-		if r.Addr.String() != addrStr || r.DeposedKey != dk {
+		if !r.Addr.Equal(addr) || r.DeposedKey != dk {
 			continue
 		}
 		copy(cs.changes.Resources[i:], cs.changes.Resources[i+1:])
@@ -212,10 +213,8 @@ func (cs *ChangesSync) RemoveOutputChange(addr addrs.AbsOutputValue) {
 	cs.lock.Lock()
 	defer cs.lock.Unlock()
 
-	addrStr := addr.String()
-
 	for i, o := range cs.changes.Outputs {
-		if o.Addr.String() != addrStr {
+		if !o.Addr.Equal(addr) {
 			continue
 		}
 		copy(cs.changes.Outputs[i:], cs.changes.Outputs[i+1:])

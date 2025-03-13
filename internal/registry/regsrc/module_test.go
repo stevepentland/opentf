@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package regsrc
@@ -34,8 +36,8 @@ func TestModule(t *testing.T) {
 		},
 		{
 			name:        "public registry, explicit host",
-			source:      "registry.terraform.io/hashicorp/consul/aws",
-			wantString:  "registry.terraform.io/hashicorp/consul/aws",
+			source:      "registry.opentofu.org/hashicorp/consul/aws",
+			wantString:  "registry.opentofu.org/hashicorp/consul/aws",
 			wantDisplay: "hashicorp/consul/aws",
 			wantNorm:    "hashicorp/consul/aws",
 			wantErr:     false,
@@ -73,7 +75,7 @@ func TestModule(t *testing.T) {
 			////modules/Foo and //modules/foo describe different paths, but
 			// it's less confusing in general just to not support that. Any user
 			// with a module with submodules in both cases is already asking for
-			// portability issues, and terraform can ensure it does
+			// portability issues, and tofu can ensure it does
 			// case-insensitive search for the dir in those cases.
 			wantDisplay: "испытание.com:1234/hashicorp/consul/aws//foo",
 			wantNorm:    "xn--80akhbyknj4f.com:1234/hashicorp/consul/aws//foo",

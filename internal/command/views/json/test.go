@@ -1,9 +1,14 @@
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package json
 
 import (
 	"strings"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/moduletest"
+	"github.com/opentofu/opentofu/internal/moduletest"
 )
 
 type TestSuiteAbstract map[string][]string

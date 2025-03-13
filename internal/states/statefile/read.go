@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package statefile
@@ -8,13 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 
 	version "github.com/hashicorp/go-version"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
-	tfversion "github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	tfversion "github.com/opentofu/opentofu/version"
 )
 
 // ErrNoState is returned by ReadState when the state file is empty.
@@ -48,7 +50,7 @@ func (e *ErrUnusableState) Unwrap() error {
 // If the state file is empty, the special error value ErrNoState is returned.
 // Otherwise, the returned error might be a wrapper around tfdiags.Diagnostics
 // potentially describing multiple errors.
-func Read(r io.Reader) (*File, error) {
+func Read(r io.Reader, enc encryption.StateEncryption) (*File, error) {
 	// Some callers provide us a "typed nil" *os.File here, which would
 	// cause us to panic below if we tried to use it.
 	if f, ok := r.(*os.File); ok && f == nil {
@@ -60,7 +62,7 @@ func Read(r io.Reader) (*File, error) {
 	// We actually just buffer the whole thing in memory, because states are
 	// generally not huge and we need to do be able to sniff for a version
 	// number before full parsing.
-	src, err := ioutil.ReadAll(r)
+	src, err := io.ReadAll(r)
 	if err != nil {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
@@ -74,7 +76,12 @@ func Read(r io.Reader) (*File, error) {
 		return nil, ErrNoState
 	}
 
-	state, err := readState(src)
+	decrypted, status, err := enc.DecryptState(src)
+	if err != nil {
+		return nil, err
+	}
+
+	state, err := readState(decrypted)
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +90,8 @@ func Read(r io.Reader) (*File, error) {
 		// Should never happen
 		panic("readState returned nil state with no errors")
 	}
+
+	state.EncryptionStatus = status
 
 	return state, diags.Err()
 }
@@ -94,9 +103,9 @@ func readState(src []byte) (*File, error) {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			unsupportedFormat,
-			// This is a user-facing usage of Terraform but refers to a very old historical version of Terraform
-			// which has no corresponding OpenTF version, and is unlikely to get one.
-			// If we ever get OpenTF 0.6.16 and 0.7.x, we should update this message to mention OpenTF instead.
+			// This is a user-facing usage of OpenTofu but refers to a very old historical version of OpenTofu
+			// which has no corresponding OpenTofu version, and is unlikely to get one.
+			// If we ever get OpenTofu 0.6.16 and 0.7.x, we should update this message to mention OpenTofu instead.
 			"The state is stored in a legacy binary format that is not supported since Terraform v0.7. To continue, first upgrade the state using Terraform 0.6.16 or earlier.",
 		))
 		return nil, errUnusable(diags.Err())
@@ -136,13 +145,13 @@ func readState(src []byte) (*File, error) {
 			diags = diags.Append(tfdiags.Sourceless(
 				tfdiags.Error,
 				unsupportedFormat,
-				fmt.Sprintf("The state file uses format version %d, which is not supported by OpenTF %s. This state file was created by OpenTF %s.", version, thisVersion, creatingVersion),
+				fmt.Sprintf("The state file uses format version %d, which is not supported by OpenTofu %s. This state file was created by OpenTofu %s.", version, thisVersion, creatingVersion),
 			))
 		default:
 			diags = diags.Append(tfdiags.Sourceless(
 				tfdiags.Error,
 				unsupportedFormat,
-				fmt.Sprintf("The state file uses format version %d, which is not supported by OpenTF %s. This state file may have been created by a newer version of OpenTF.", version, thisVersion),
+				fmt.Sprintf("The state file uses format version %d, which is not supported by OpenTofu %s. This state file may have been created by a newer version of OpenTofu.", version, thisVersion),
 			))
 		}
 	}
@@ -186,6 +195,23 @@ func sniffJSONStateVersion(src []byte) (uint64, tfdiags.Diagnostics) {
 	}
 
 	if sniff.Version == nil {
+		encrypted, err := encryption.IsEncryptionPayload(src)
+		if err != nil {
+			diags = diags.Append(tfdiags.Sourceless(
+				tfdiags.Error,
+				unsupportedFormat,
+				fmt.Sprintf("The state file can not be checked for presence of encryption: %s", err.Error()),
+			))
+			return 0, diags
+		}
+		if encrypted {
+			diags = diags.Append(tfdiags.Sourceless(
+				tfdiags.Error,
+				unsupportedFormat,
+				"This state file is encrypted and can not be read without an encryption configuration",
+			))
+			return 0, diags
+		}
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			unsupportedFormat,
@@ -197,7 +223,7 @@ func sniffJSONStateVersion(src []byte) (uint64, tfdiags.Diagnostics) {
 	return *sniff.Version, diags
 }
 
-// sniffJSONStateTerraformVersion attempts to sniff the Terraform version
+// sniffJSONStateTerraformVersion attempts to sniff the OpenTofu version
 // specification from the given state file source code. The result is either
 // a version string or an empty string if no version number could be extracted.
 //

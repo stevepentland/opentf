@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package cliconfig
@@ -7,7 +9,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -19,9 +20,9 @@ import (
 	svchost "github.com/hashicorp/terraform-svchost"
 	svcauth "github.com/hashicorp/terraform-svchost/auth"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/hcl2shim"
-	pluginDiscovery "github.com/placeholderplaceholderplaceholder/opentf/internal/plugin/discovery"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/replacefile"
+	"github.com/opentofu/opentofu/internal/configs/hcl2shim"
+	pluginDiscovery "github.com/opentofu/opentofu/internal/plugin/discovery"
+	"github.com/opentofu/opentofu/internal/replacefile"
 )
 
 // credentialsConfigFile returns the path for the special configuration file
@@ -43,7 +44,7 @@ func (c *Config) CredentialsSource(helperPlugins pluginDiscovery.PluginMetaSet) 
 	if err != nil {
 		// If we managed to load a Config object at all then we would already
 		// have located this file, so this error is very unlikely.
-		return nil, fmt.Errorf("can't locate credentials file: %s", err)
+		return nil, fmt.Errorf("can't locate credentials file: %w", err)
 	}
 
 	var helper svcauth.CredentialsSource
@@ -151,12 +152,12 @@ func collectCredentialsFromEnv() map[svchost.Hostname]string {
 		// libraries that might interfere with how they are encoded, we'll
 		// be tolerant of them being given either directly as UTF-8 IDNs
 		// or in Punycode form, normalizing to Punycode form here because
-		// that is what the OpenTF credentials helper protocol will
+		// that is what the OpenTofu credentials helper protocol will
 		// use in its requests.
 		//
-		// Using ForDisplay first here makes this more liberal than OpenTF
+		// Using ForDisplay first here makes this more liberal than OpenTofu
 		// itself would usually be in that it will tolerate pre-punycoded
-		// hostnames that OpenTF normally rejects in other contexts in order
+		// hostnames that OpenTofu normally rejects in other contexts in order
 		// to ensure stored hostnames are human-readable.
 		dispHost := svchost.ForDisplay(rawHost)
 		hostname, err := svchost.ForComparison(dispHost)
@@ -326,12 +327,12 @@ func (s *CredentialsSource) updateLocalHostCredentials(host svchost.Hostname, ne
 
 	filename, err := s.CredentialsFilePath()
 	if err != nil {
-		return fmt.Errorf("unable to determine credentials file path: %s", err)
+		return fmt.Errorf("unable to determine credentials file path: %w", err)
 	}
 
-	oldSrc, err := ioutil.ReadFile(filename)
+	oldSrc, err := os.ReadFile(filename)
 	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("cannot read %s: %s", filename, err)
+		return fmt.Errorf("cannot read %s: %w", filename, err)
 	}
 
 	var raw map[string]interface{}
@@ -343,7 +344,7 @@ func (s *CredentialsSource) updateLocalHostCredentials(host svchost.Hostname, ne
 		dec.UseNumber()
 		err = dec.Decode(&raw)
 		if err != nil {
-			return fmt.Errorf("cannot read %s: %s", filename, err)
+			return fmt.Errorf("cannot read %s: %w", filename, err)
 		}
 	} else {
 		raw = make(map[string]interface{})
@@ -359,7 +360,7 @@ func (s *CredentialsSource) updateLocalHostCredentials(host svchost.Hostname, ne
 		return fmt.Errorf("credentials file %s has invalid value for \"credentials\" property: must be a JSON object", filename)
 	}
 
-	// We use display-oriented hostnames in our file to mimick how a human user
+	// We use display-oriented hostnames in our file to mimic how a human user
 	// would write it, so we need to search for and remove any key that
 	// normalizes to our target hostname so we won't generate something invalid
 	// when the existing entry is slightly different.
@@ -384,7 +385,7 @@ func (s *CredentialsSource) updateLocalHostCredentials(host svchost.Hostname, ne
 
 	newSrc, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
-		return fmt.Errorf("cannot serialize updated credentials file: %s", err)
+		return fmt.Errorf("cannot serialize updated credentials file: %w", err)
 	}
 
 	// Now we'll write our new content over the top of the existing file.
@@ -396,9 +397,9 @@ func (s *CredentialsSource) updateLocalHostCredentials(host svchost.Hostname, ne
 	// the underlying OS/filesystem will allow.
 	{
 		dir, file := filepath.Split(filename)
-		f, err := ioutil.TempFile(dir, file)
+		f, err := os.CreateTemp(dir, file)
 		if err != nil {
-			return fmt.Errorf("cannot create temporary file to update credentials: %s", err)
+			return fmt.Errorf("cannot create temporary file to update credentials: %w", err)
 		}
 		tmpName := f.Name()
 		moved := false
@@ -416,7 +417,7 @@ func (s *CredentialsSource) updateLocalHostCredentials(host svchost.Hostname, ne
 		_, err = f.Write(newSrc)
 		f.Close()
 		if err != nil {
-			return fmt.Errorf("cannot write to temporary file %s: %s", tmpName, err)
+			return fmt.Errorf("cannot write to temporary file %s: %w", tmpName, err)
 		}
 
 		// Temporary file now replaces the original file, as atomically as
@@ -424,14 +425,14 @@ func (s *CredentialsSource) updateLocalHostCredentials(host svchost.Hostname, ne
 		// containing only a partial JSON object.)
 		err = replacefile.AtomicRename(tmpName, filename)
 		if err != nil {
-			return fmt.Errorf("failed to replace %s with temporary file %s: %s", filename, tmpName, err)
+			return fmt.Errorf("failed to replace %s with temporary file %s: %w", filename, tmpName, err)
 		}
 
 		// Credentials file should be readable only by its owner. (This may
 		// not be effective on all platforms, but should at least work on
 		// Unix-like targets and should be harmless elsewhere.)
 		if err := os.Chmod(filename, 0600); err != nil {
-			return fmt.Errorf("cannot set mode for credentials file %s: %s", filename, err)
+			return fmt.Errorf("cannot set mode for credentials file %s: %w", filename, err)
 		}
 
 		moved = true
@@ -454,7 +455,7 @@ func (s *CredentialsSource) updateLocalHostCredentials(host svchost.Hostname, ne
 // this returns an empty set, reflecting that effectively no credentials are
 // stored there.
 func readHostsInCredentialsFile(filename string) map[svchost.Hostname]struct{} {
-	src, err := ioutil.ReadFile(filename)
+	src, err := os.ReadFile(filename)
 	if err != nil {
 		return nil
 	}

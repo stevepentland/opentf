@@ -1,10 +1,13 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package refactoring
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,13 +15,13 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty/gocty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configload"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/initwd"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/instances"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/registry"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/configs/configload"
+	"github.com/opentofu/opentofu/internal/initwd"
+	"github.com/opentofu/opentofu/internal/instances"
+	"github.com/opentofu/opentofu/internal/registry"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 func TestValidateMoves(t *testing.T) {
@@ -441,7 +444,7 @@ Each resource can have moved from only one source resource.`,
 					`other.single`,
 				),
 			},
-			WantError: `Resource type mismatch: This statement declares a move from test.nonexist1 to other.single, which is a resource of a different type.`,
+			WantError: ``,
 		},
 		"resource instance type mismatch": {
 			Statements: []MoveStatement{
@@ -450,7 +453,7 @@ Each resource can have moved from only one source resource.`,
 					`other.single`,
 				),
 			},
-			WantError: `Resource type mismatch: This statement declares a move from test.nonexist1[0] to other.single, which is a resource instance of a different type.`,
+			WantError: ``,
 		},
 		"crossing nested statements": {
 			// overlapping nested moves will result in a cycle.
@@ -515,7 +518,8 @@ A chain of move statements must end with an address that doesn't appear in any o
 				if !gotDiags.HasErrors() {
 					t.Fatalf("unexpected success\nwant error: %s", test.WantError)
 				}
-				if got, want := gotDiags.Err().Error(), test.WantError; got != want {
+				normalisedErr := filepath.ToSlash(gotDiags.Err().Error())
+				if got, want := normalisedErr, test.WantError; got != want {
 					t.Fatalf("wrong error\ngot error:  %s\nwant error: %s", got, want)
 				}
 			default:
@@ -530,7 +534,7 @@ A chain of move statements must end with an address that doesn't appear in any o
 // loadRefactoringFixture reads a configuration from the given directory and
 // does some naive static processing on any count and for_each expressions
 // inside, in order to get a realistic-looking instances.Set for what it
-// declares without having to run a full Terraform plan.
+// declares without having to run a full OpenTofu plan.
 func loadRefactoringFixture(t *testing.T, dir string) (*configs.Config, instances.Set) {
 	t.Helper()
 
@@ -538,7 +542,7 @@ func loadRefactoringFixture(t *testing.T, dir string) (*configs.Config, instance
 	defer cleanup()
 
 	inst := initwd.NewModuleInstaller(loader.ModulesDir(), loader, registry.NewClient(nil, nil))
-	_, instDiags := inst.InstallModules(context.Background(), dir, "tests", true, false, initwd.ModuleInstallHooksImpl{})
+	_, instDiags := inst.InstallModules(context.Background(), dir, "tests", true, false, initwd.ModuleInstallHooksImpl{}, configs.RootModuleCallForTesting())
 	if instDiags.HasErrors() {
 		t.Fatal(instDiags.Err())
 	}
@@ -549,7 +553,7 @@ func loadRefactoringFixture(t *testing.T, dir string) (*configs.Config, instance
 		t.Fatalf("failed to refresh modules after installation: %s", err)
 	}
 
-	rootCfg, diags := loader.LoadConfig(dir)
+	rootCfg, diags := loader.LoadConfig(dir, configs.RootModuleCallForTesting())
 	if diags.HasErrors() {
 		t.Fatalf("failed to load root module: %s", diags.Error())
 	}

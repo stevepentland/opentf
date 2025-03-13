@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -13,13 +15,13 @@ import (
 	plugin "github.com/hashicorp/go-plugin"
 	"github.com/kardianos/osext"
 
-	fileprovisioner "github.com/placeholderplaceholderplaceholder/opentf/internal/builtin/provisioners/file"
-	localexec "github.com/placeholderplaceholderplaceholder/opentf/internal/builtin/provisioners/local-exec"
-	remoteexec "github.com/placeholderplaceholderplaceholder/opentf/internal/builtin/provisioners/remote-exec"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/logging"
-	tfplugin "github.com/placeholderplaceholderplaceholder/opentf/internal/plugin"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plugin/discovery"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/provisioners"
+	fileprovisioner "github.com/opentofu/opentofu/internal/builtin/provisioners/file"
+	localexec "github.com/opentofu/opentofu/internal/builtin/provisioners/local-exec"
+	remoteexec "github.com/opentofu/opentofu/internal/builtin/provisioners/remote-exec"
+	"github.com/opentofu/opentofu/internal/logging"
+	tfplugin "github.com/opentofu/opentofu/internal/plugin"
+	"github.com/opentofu/opentofu/internal/plugin/discovery"
+	"github.com/opentofu/opentofu/internal/provisioners"
 )
 
 // NOTE WELL: The logic in this file is primarily about plugin types OTHER THAN
@@ -76,7 +78,7 @@ func (m *Meta) pluginDirs(includeAutoInstalled bool) []string {
 	// vendor dir(s).
 	dirs := []string{"."}
 
-	// Look in the same directory as the Terraform executable.
+	// Look in the same directory as the OpenTofu executable.
 	// If found, this replaces what we found in the config path.
 	exePath, err := osext.Executable()
 	if err != nil {

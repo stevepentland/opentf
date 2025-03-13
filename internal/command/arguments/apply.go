@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package arguments
@@ -6,8 +8,8 @@ package arguments
 import (
 	"fmt"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 // Apply represents the command-line arguments for the apply command.
@@ -29,6 +31,9 @@ type Apply struct {
 
 	// ViewType specifies which output format to use
 	ViewType ViewType
+
+	// ShowSensitive is used to display the value of variables marked as sensitive.
+	ShowSensitive bool
 }
 
 // ParseApply processes CLI arguments, returning an Apply value and errors.
@@ -45,6 +50,7 @@ func ParseApply(args []string) (*Apply, tfdiags.Diagnostics) {
 	cmdFlags := extendedFlagSet("apply", apply.State, apply.Operation, apply.Vars)
 	cmdFlags.BoolVar(&apply.AutoApprove, "auto-approve", false, "auto-approve")
 	cmdFlags.BoolVar(&apply.InputEnabled, "input", true, "input")
+	cmdFlags.BoolVar(&apply.ShowSensitive, "show-sensitive", false, "displays sensitive values")
 
 	var json bool
 	cmdFlags.BoolVar(&json, "json", false, "json")
@@ -83,7 +89,7 @@ func ParseApply(args []string) (*Apply, tfdiags.Diagnostics) {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Plan file or auto-approve required",
-			"OpenTF cannot ask for interactive approval when -json is set. You can either apply a saved plan file, or enable the -auto-approve option.",
+			"OpenTofu cannot ask for interactive approval when -json is set. You can either apply a saved plan file, or enable the -auto-approve option.",
 		))
 	}
 
@@ -100,13 +106,13 @@ func ParseApply(args []string) (*Apply, tfdiags.Diagnostics) {
 }
 
 // ParseApplyDestroy is a special case of ParseApply that deals with the
-// "opentf destroy" command, which is effectively an alias for
-// "opentf apply -destroy".
+// "tofu destroy" command, which is effectively an alias for
+// "tofu apply -destroy".
 func ParseApplyDestroy(args []string) (*Apply, tfdiags.Diagnostics) {
 	apply, diags := ParseApply(args)
 
 	// So far ParseApply was using the command line options like -destroy
-	// and -refresh-only to determine the plan mode. For "opentf destroy"
+	// and -refresh-only to determine the plan mode. For "tofu destroy"
 	// we expect neither of those arguments to be set, and so the plan mode
 	// should currently be set to NormalMode, which we'll replace with
 	// DestroyMode here. If it's already set to something else then that
@@ -121,13 +127,13 @@ func ParseApplyDestroy(args []string) (*Apply, tfdiags.Diagnostics) {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Invalid mode option",
-			"The -destroy option is not valid for \"opentf destroy\", because this command always runs in destroy mode.",
+			"The -destroy option is not valid for \"tofu destroy\", because this command always runs in destroy mode.",
 		))
 	case plans.RefreshOnlyMode:
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Invalid mode option",
-			"The -refresh-only option is not valid for \"opentf destroy\".",
+			"The -refresh-only option is not valid for \"tofu destroy\".",
 		))
 	default:
 		// This is a non-ideal error message for if we forget to handle a
@@ -136,7 +142,7 @@ func ParseApplyDestroy(args []string) (*Apply, tfdiags.Diagnostics) {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Invalid mode option",
-			fmt.Sprintf("The \"opentf destroy\" command doesn't support %s.", apply.Operation.PlanMode),
+			fmt.Sprintf("The \"tofu destroy\" command doesn't support %s.", apply.Operation.PlanMode),
 		))
 	}
 

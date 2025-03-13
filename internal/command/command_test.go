@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -11,7 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,30 +30,31 @@ import (
 	"github.com/hashicorp/terraform-svchost/disco"
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	backendInit "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/init"
-	backendLocal "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/local"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/workdir"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configload"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/copy"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/depsfile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/getproviders"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/initwd"
-	legacy "github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/opentf"
-	_ "github.com/placeholderplaceholderplaceholder/opentf/internal/logging"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans/planfile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/registry"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
-	"github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/addrs"
+	backendInit "github.com/opentofu/opentofu/internal/backend/init"
+	backendLocal "github.com/opentofu/opentofu/internal/backend/local"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/command/workdir"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/configs/configload"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/copy"
+	"github.com/opentofu/opentofu/internal/depsfile"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/getproviders"
+	"github.com/opentofu/opentofu/internal/initwd"
+	legacy "github.com/opentofu/opentofu/internal/legacy/tofu"
+	_ "github.com/opentofu/opentofu/internal/logging"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/plans/planfile"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/registry"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/terminal"
+	"github.com/opentofu/opentofu/internal/tofu"
+	"github.com/opentofu/opentofu/version"
 )
 
 // These are the directories for our test data and fixtures.
@@ -159,12 +162,12 @@ func testModuleWithSnapshot(t *testing.T, name string) (*configs.Config, *config
 	// sources only this ultimately just records all of the module paths
 	// in a JSON file so that we can load them below.
 	inst := initwd.NewModuleInstaller(loader.ModulesDir(), loader, registry.NewClient(nil, nil))
-	_, instDiags := inst.InstallModules(context.Background(), dir, "tests", true, false, initwd.ModuleInstallHooksImpl{})
+	_, instDiags := inst.InstallModules(context.Background(), dir, "tests", true, false, initwd.ModuleInstallHooksImpl{}, configs.RootModuleCallForTesting())
 	if instDiags.HasErrors() {
 		t.Fatal(instDiags.Err())
 	}
 
-	config, snap, diags := loader.LoadConfigWithSnapshot(dir)
+	config, snap, diags := loader.LoadConfigWithSnapshot(dir, configs.RootModuleCallForTesting())
 	if diags.HasErrors() {
 		t.Fatal(diags.Error())
 	}
@@ -226,7 +229,7 @@ func testPlanFileMatchState(t *testing.T, configSnap *configload.Snapshot, state
 		StateFile:            stateFile,
 		Plan:                 plan,
 		DependencyLocks:      depsfile.NewLocks(),
-	})
+	}, encryption.PlanEncryptionDisabled())
 	if err != nil {
 		t.Fatalf("failed to create temporary plan file: %s", err)
 	}
@@ -274,11 +277,10 @@ func testFileEquals(t *testing.T, got, want string) {
 func testReadPlan(t *testing.T, path string) *plans.Plan {
 	t.Helper()
 
-	f, err := planfile.Open(path)
+	f, err := planfile.Open(path, encryption.PlanEncryptionDisabled())
 	if err != nil {
 		t.Fatalf("error opening plan file %q: %s", path, err)
 	}
-	defer f.Close()
 
 	p, err := f.ReadPlan()
 	if err != nil {
@@ -301,7 +303,7 @@ func testState() *states.State {
 				// The weird whitespace here is reflective of how this would
 				// get written out in a real state file, due to the indentation
 				// of all of the containing wrapping objects and arrays.
-				AttrsJSON:    []byte("{\n            \"id\": \"bar\"\n          }"),
+				AttrsJSON:    []byte(`{"id":"bar"}`),
 				Status:       states.ObjectReady,
 				Dependencies: []addrs.ConfigResource{},
 			},
@@ -309,6 +311,7 @@ func testState() *states.State {
 				Provider: addrs.NewDefaultProvider("test"),
 				Module:   addrs.RootModule,
 			},
+			addrs.NoKey,
 		)
 		// DeepCopy is used here to ensure our synthetic state matches exactly
 		// with a state that will have been copied during the command
@@ -325,7 +328,7 @@ func writeStateForTesting(state *states.State, w io.Writer) error {
 		Lineage: "fake-for-testing",
 		State:   state,
 	}
-	return statefile.Write(sf, w)
+	return statefile.Write(sf, w, encryption.StateEncryptionDisabled())
 }
 
 // testStateMgrCurrentLineage returns the current lineage for the given state
@@ -480,7 +483,7 @@ func testStateRead(t *testing.T, path string) *states.State {
 	}
 	defer f.Close()
 
-	sf, err := statefile.Read(f)
+	sf, err := statefile.Read(f, encryption.StateEncryptionDisabled())
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
@@ -523,8 +526,8 @@ func testStateOutput(t *testing.T, path string, expected string) {
 	}
 }
 
-func testProvider() *opentf.MockProvider {
-	p := new(opentf.MockProvider)
+func testProvider() *tofu.MockProvider {
+	p := new(tofu.MockProvider)
 	p.PlanResourceChangeFn = func(req providers.PlanResourceChangeRequest) (resp providers.PlanResourceChangeResponse) {
 		resp.PlannedState = req.ProposedNewState
 		return resp
@@ -734,7 +737,7 @@ func testInputMap(t *testing.T, answers map[string]string) func() {
 //
 // If such a block isn't present, or if it isn't empty, then an error will
 // be returned about the backend configuration having changed and that
-// "terraform init" must be run, since the test backend config cache created
+// "tofu init" must be run, since the test backend config cache created
 // by this function contains the hash for an empty configuration.
 func testBackendState(t *testing.T, s *states.State, c int) (*legacy.State, *httptest.Server) {
 	t.Helper()
@@ -758,7 +761,7 @@ func testBackendState(t *testing.T, s *states.State, c int) (*legacy.State, *htt
 
 	// If a state was given, make sure we calculate the proper b64md5
 	if s != nil {
-		err := statefile.Write(&statefile.File{State: s}, buf)
+		err := statefile.Write(&statefile.File{State: s}, buf, encryption.StateEncryptionDisabled())
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
@@ -771,10 +774,11 @@ func testBackendState(t *testing.T, s *states.State, c int) (*legacy.State, *htt
 	backendConfig := &configs.Backend{
 		Type:   "http",
 		Config: configs.SynthBody("<testBackendState>", map[string]cty.Value{}),
+		Eval:   configs.NewStaticEvaluator(nil, configs.RootModuleCallForTesting()),
 	}
-	b := backendInit.Backend("http")()
+	b := backendInit.Backend("http")(encryption.StateEncryptionDisabled())
 	configSchema := b.ConfigSchema()
-	hash := backendConfig.Hash(configSchema)
+	hash, _ := backendConfig.Hash(configSchema)
 
 	state := legacy.NewState()
 	state.Backend = &legacy.BackendState{
@@ -831,7 +835,7 @@ func testRemoteState(t *testing.T, s *states.State, c int) (*legacy.State, *http
 	retState.Backend = b
 
 	if s != nil {
-		err := statefile.Write(&statefile.File{State: s}, buf)
+		err := statefile.Write(&statefile.File{State: s}, buf, encryption.StateEncryptionDisabled())
 		if err != nil {
 			t.Fatalf("failed to write initial state: %v", err)
 		}
@@ -840,9 +844,9 @@ func testRemoteState(t *testing.T, s *states.State, c int) (*legacy.State, *http
 	return retState, srv
 }
 
-// testlockState calls a separate process to the lock the state file at path.
+// testLockState calls a separate process to the lock the state file at path.
 // deferFunc should be called in the caller to properly unlock the file.
-// Since many tests change the working directory, the sourcedir argument must be
+// Since many tests change the working directory, the sourceDir argument must be
 // supplied to locate the statelocker.go source.
 func testLockState(t *testing.T, sourceDir, path string) (func(), error) {
 	// build and run the binary ourselves so we can quickly terminate it for cleanup
@@ -856,7 +860,7 @@ func testLockState(t *testing.T, sourceDir, path string) (func(), error) {
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("%s %s", err, out)
+		return nil, fmt.Errorf("%w %s", err, out)
 	}
 
 	locker := exec.Command(lockBin, path)
@@ -881,7 +885,7 @@ func testLockState(t *testing.T, sourceDir, path string) (func(), error) {
 	buf := make([]byte, 1024)
 	n, err := pr.Read(buf)
 	if err != nil {
-		return deferFunc, fmt.Errorf("read from statelocker returned: %s", err)
+		return deferFunc, fmt.Errorf("read from statelocker returned: %w", err)
 	}
 
 	output := string(buf[:n])
@@ -920,7 +924,7 @@ func testCopyDir(t *testing.T, src, dst string) {
 		t.Fatal(err)
 	}
 
-	entries, err := ioutil.ReadDir(src)
+	entries, err := os.ReadDir(src)
 	if err != nil {
 		return
 	}
@@ -930,16 +934,17 @@ func testCopyDir(t *testing.T, src, dst string) {
 		dstPath := filepath.Join(dst, entry.Name())
 
 		// If the entry is a symlink, we copy the contents
-		for entry.Mode()&os.ModeSymlink != 0 {
+		for entry.Type()&os.ModeSymlink != 0 {
 			target, err := os.Readlink(srcPath)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			entry, err = os.Stat(target)
+			fi, err := os.Stat(target)
 			if err != nil {
 				t.Fatal(err)
 			}
+			entry = fs.FileInfoToDirEntry(fi)
 		}
 
 		if entry.IsDir() {
@@ -999,7 +1004,7 @@ func testServices(t *testing.T) (services *disco.Disco, cleanup func()) {
 	server := httptest.NewServer(http.HandlerFunc(fakeRegistryHandler))
 
 	services = disco.New()
-	services.ForceHostServices(svchost.Hostname("registry.terraform.io"), map[string]interface{}{
+	services.ForceHostServices(svchost.Hostname("registry.opentofu.org"), map[string]interface{}{
 		"providers.v1": server.URL + "/providers/v1/",
 	})
 
@@ -1092,7 +1097,7 @@ func checkGoldenReference(t *testing.T, output *terminal.TestOutput, fixturePath
 		t.Fatalf("failed to open output file: %s", err)
 	}
 	defer wantFile.Close()
-	wantBytes, err := ioutil.ReadAll(wantFile)
+	wantBytes, err := io.ReadAll(wantFile)
 	if err != nil {
 		t.Fatalf("failed to read output file: %s", err)
 	}
@@ -1116,11 +1121,11 @@ func checkGoldenReference(t *testing.T, output *terminal.TestOutput, fixturePath
 
 	// Verify that the log starts with a version message
 	type versionMessage struct {
-		Level   string `json:"@level"`
-		Message string `json:"@message"`
-		Type    string `json:"type"`
-		OpenTF  string `json:"opentf"`
-		UI      string `json:"ui"`
+		Level    string `json:"@level"`
+		Message  string `json:"@message"`
+		Type     string `json:"type"`
+		OpenTofu string `json:"tofu"`
+		UI       string `json:"ui"`
 	}
 	var gotVersion versionMessage
 	if err := json.Unmarshal([]byte(gotLines[0]), &gotVersion); err != nil {
@@ -1128,7 +1133,7 @@ func checkGoldenReference(t *testing.T, output *terminal.TestOutput, fixturePath
 	}
 	wantVersion := versionMessage{
 		"info",
-		fmt.Sprintf("OpenTF %s", version.String()),
+		fmt.Sprintf("OpenTofu %s", version.String()),
 		"version",
 		version.String(),
 		views.JSON_UI_VERSION,
@@ -1148,9 +1153,11 @@ func checkGoldenReference(t *testing.T, output *terminal.TestOutput, fixturePath
 		if _, ok := gotMap["@timestamp"]; !ok {
 			t.Errorf("missing @timestamp field in log: %s", gotLines[index])
 		}
+		gotMap = deleteMapField(gotMap, "hook", "elapsed_seconds")
 		delete(gotMap, "@timestamp")
 		gotLineMaps = append(gotLineMaps, gotMap)
 	}
+
 	var wantLineMaps []map[string]interface{}
 	for i, line := range wantLines[1:] {
 		index := i + 1
@@ -1158,11 +1165,23 @@ func checkGoldenReference(t *testing.T, output *terminal.TestOutput, fixturePath
 		if err := json.Unmarshal([]byte(line), &wantMap); err != nil {
 			t.Errorf("failed to unmarshal want line %d: %s\n%s", index, err, gotLines[index])
 		}
+		wantMap = deleteMapField(wantMap, "hook", "elapsed_seconds")
 		wantLineMaps = append(wantLineMaps, wantMap)
 	}
+
 	if diff := cmp.Diff(wantLineMaps, gotLineMaps); diff != "" {
 		t.Errorf("wrong output lines\n%s\n"+
 			"NOTE: This failure may indicate a UI change affecting the behavior of structured run output on TFC.\n"+
 			"Please communicate with Terraform Cloud team before resolving", diff)
 	}
+}
+
+func deleteMapField(fieldMap map[string]interface{}, rootField, field string) map[string]interface{} {
+	rootMap, ok := fieldMap[rootField].(map[string]interface{})
+	if !ok {
+		return fieldMap
+	}
+
+	delete(rootMap, field)
+	return rootMap
 }

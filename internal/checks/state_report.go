@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package checks
@@ -6,13 +8,13 @@ package checks
 import (
 	"fmt"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 )
 
-// These are the "Report"-prefixed methods of Checks used by Terraform Core
+// These are the "Report"-prefixed methods of Checks used by OpenTofu Core
 // to gradually signal the results of checks during a plan or apply operation.
 
-// ReportCheckableObjects is the interface by which Terraform Core should
+// ReportCheckableObjects is the interface by which OpenTofu Core should
 // tell the State object which specific checkable objects were declared
 // by the given configuration object.
 //
@@ -29,11 +31,12 @@ func (c *State) ReportCheckableObjects(configAddr addrs.ConfigCheckable, objectA
 	}
 	if st.objects.Elems != nil {
 		// Can only report checkable objects once per configuration object
-		panic(fmt.Sprintf("duplicate checkable objects report for %s ", configAddr))
+		// This is not a problem as the result is already cached.
+		return
 	}
 
 	// At this point we pre-populate all of the check results as StatusUnknown,
-	// so that even if we never hear from Terraform Core again we'll still
+	// so that even if we never hear from OpenTofu Core again we'll still
 	// remember that these results were all pending.
 	st.objects = addrs.MakeMap[addrs.Checkable, map[addrs.CheckRuleType][]Status]()
 	for _, objectAddr := range objectAddrs {
@@ -54,7 +57,7 @@ func (c *State) ReportCheckableObjects(configAddr addrs.ConfigCheckable, objectA
 	}
 }
 
-// ReportCheckResult is the interface by which Terraform Core should tell the
+// ReportCheckResult is the interface by which OpenTofu Core should tell the
 // State object the result of a specific check for an object that was
 // previously registered with ReportCheckableObjects.
 //

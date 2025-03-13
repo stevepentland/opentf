@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -8,8 +10,8 @@ import (
 
 	"github.com/zclconf/go-cty/cty/function"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonfunction"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/lang"
+	"github.com/opentofu/opentofu/internal/command/jsonfunction"
+	"github.com/opentofu/opentofu/internal/lang"
 )
 
 var (
@@ -17,7 +19,7 @@ var (
 )
 
 // MetadataFunctionsCommand is a Command implementation that prints out information
-// about the available functions in Terraform.
+// about the available functions in OpenTofu.
 type MetadataFunctionsCommand struct {
 	Meta
 }
@@ -44,7 +46,7 @@ func (c *MetadataFunctionsCommand) Run(args []string) int {
 
 	if !jsonOutput {
 		c.Ui.Error(
-			"The `opentf metadata functions` command requires the `-json` flag.\n")
+			"The `tofu metadata functions` command requires the `-json` flag.\n")
 		cmdFlags.Usage()
 		return 1
 	}
@@ -70,14 +72,14 @@ func (c *MetadataFunctionsCommand) Run(args []string) int {
 }
 
 const metadataFunctionsCommandHelp = `
-Usage: opentf [global options] metadata functions -json
+Usage: tofu [global options] metadata functions -json
 
   Prints out a json representation of the available function signatures.
 `
 
 func isIgnoredFunction(name string) bool {
 	for _, i := range ignoredFunctions {
-		if i == name {
+		if i == name || lang.CoreNamespace+i == name {
 			return true
 		}
 	}

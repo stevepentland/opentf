@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 // Package cliconfig has the types representing and the logic to load CLI-level
@@ -6,7 +8,7 @@
 //
 // The CLI config is a small collection of settings that a user can override via
 // some files in their home directory or, in some cases, via environment
-// variables. The CLI config is not the same thing as a OpenTF configuration
+// variables. The CLI config is not the same thing as a OpenTofu configuration
 // written in the Terraform language; the logic for those lives in the top-level
 // directory "configs".
 package cliconfig
@@ -15,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -25,15 +26,15 @@ import (
 
 	svchost "github.com/hashicorp/terraform-svchost"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 const pluginCacheDirEnvVar = "TF_PLUGIN_CACHE_DIR"
 const pluginCacheMayBreakLockFileEnvVar = "TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE"
 
-// Config is the structure of the configuration for the OpenTF CLI.
+// Config is the structure of the configuration for the OpenTofu CLI.
 //
-// This is not the configuration for OpenTF itself. That is in the
+// This is not the configuration for OpenTofu itself. That is in the
 // "config" package.
 type Config struct {
 	Providers    map[string]string
@@ -47,9 +48,9 @@ type Config struct {
 	// those who wish to use the Plugin Cache Dir even in cases where doing so
 	// will cause the dependency lock file to be incomplete.
 	//
-	// This is likely to become a silent no-op in future OpenTF versions but
+	// This is likely to become a silent no-op in future OpenTofu versions but
 	// is here in recognition of the fact that the dependency lock file is not
-	// yet a good fit for all OpenTF workflows and folks in that category
+	// yet a good fit for all OpenTofu workflows and folks in that category
 	// would prefer to have the plugin cache dir's behavior to take priority
 	// over the requirements of the dependency lock file.
 	PluginCacheMayBreakDependencyLockFile bool `hcl:"plugin_cache_may_break_dependency_lock_file"`
@@ -64,6 +65,16 @@ type Config struct {
 	// configuration, but we decode into a slice here so that we can handle
 	// that validation at validation time rather than initial decode time.
 	ProviderInstallation []*ProviderInstallation
+
+	// OCIDefaultCredentials and OCIRepositoryCredentials together represent
+	// the individual OCI-credentials-related blocks in the configuration.
+	//
+	// Only one OCIDefaultCredentials element is allowed, but we validate
+	// that after loading the configuration. Zero or more OCICredentials
+	// blocks are allowed, but they must each have a unique repository
+	// prefix.
+	OCIDefaultCredentials    []*OCIDefaultCredentials
+	OCIRepositoryCredentials []*OCIRepositoryCredentials
 }
 
 // ConfigHost is the structure of the "host" nested block within the CLI
@@ -85,16 +96,21 @@ var BuiltinConfig Config
 
 // ConfigFile returns the default path to the configuration file.
 //
-// On Unix-like systems this is the ".opentfrc" file in the home directory.
-// On Windows, this is the "opentf.rc" file in the application data
+// On Unix-like systems this is the ".tofurc" file in the home directory.
+// On Windows, this is the "tofu.rc" file in the application data
 // directory.
 func ConfigFile() (string, error) {
 	return configFile()
 }
 
-// ConfigDir returns the configuration directory for OpenTF.
+// ConfigDir returns the configuration directory for OpenTofu.
 func ConfigDir() (string, error) {
 	return configDir()
+}
+
+// DataDirs returns the data directories for OpenTofu.
+func DataDirs() ([]string, error) {
+	return dataDirs()
 }
 
 // LoadConfig reads the CLI configuration from the various filesystem locations
@@ -120,7 +136,7 @@ func LoadConfig() (*Config, tfdiags.Diagnostics) {
 	// in the config directory. We skip the config directory when source
 	// file override is set because we interpret the environment variable
 	// being set as an intention to ignore the default set of CLI config
-	// files because we're doing something special, like running OpenTF
+	// files because we're doing something special, like running OpenTofu
 	// in automation with a locally-customized configuration.
 	if cliConfigFileOverride() == "" {
 		if configDir, err := ConfigDir(); err == nil {
@@ -144,7 +160,7 @@ func LoadConfig() (*Config, tfdiags.Diagnostics) {
 	return config, diags
 }
 
-// loadConfigFile loads the CLI configuration from ".opentfrc" files.
+// loadConfigFile loads the CLI configuration from ".tofurc" files.
 func loadConfigFile(path string) (*Config, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 	result := &Config{}
@@ -152,31 +168,38 @@ func loadConfigFile(path string) (*Config, tfdiags.Diagnostics) {
 	log.Printf("Loading CLI configuration from %s", path)
 
 	// Read the HCL file and prepare for parsing
-	d, err := ioutil.ReadFile(path)
+	d, err := os.ReadFile(path)
 	if err != nil {
-		diags = diags.Append(fmt.Errorf("Error reading %s: %s", path, err))
+		diags = diags.Append(fmt.Errorf("Error reading %s: %w", path, err))
 		return result, diags
 	}
 
 	// Parse it
 	obj, err := hcl.Parse(string(d))
 	if err != nil {
-		diags = diags.Append(fmt.Errorf("Error parsing %s: %s", path, err))
+		diags = diags.Append(fmt.Errorf("Error parsing %s: %w", path, err))
 		return result, diags
 	}
 
 	// Build up the result
 	if err := hcl.DecodeObject(&result, obj); err != nil {
-		diags = diags.Append(fmt.Errorf("Error parsing %s: %s", path, err))
+		diags = diags.Append(fmt.Errorf("Error parsing %s: %w", path, err))
 		return result, diags
 	}
 
-	// Deal with the provider_installation block, which is not handled using
-	// DecodeObject because its structure is not compatible with the
-	// limitations of that function.
-	providerInstBlocks, moreDiags := decodeProviderInstallationFromConfig(obj)
-	diags = diags.Append(moreDiags)
+	// A few other blocks need some more special treatment because we are
+	// using a structure that is not compatible with HCL 1's DecodeObject,
+	// or HCL 1 would be too liberal in parsing and thus make it harder
+	// for us to potentially transition to using HCL 2 later.
+	providerInstBlocks, providerInstDiags := decodeProviderInstallationFromConfig(obj)
+	diags = diags.Append(providerInstDiags)
 	result.ProviderInstallation = providerInstBlocks
+	ociDefaultCredsBlocks, ociDefaultCredsDiags := decodeOCIDefaultCredentialsFromConfig(obj, path)
+	diags = diags.Append(ociDefaultCredsDiags)
+	result.OCIDefaultCredentials = ociDefaultCredsBlocks
+	ociCredsBlocks, ociCredsDiags := decodeOCIRepositoryCredentialsFromConfig(obj)
+	diags = diags.Append(ociCredsDiags)
+	result.OCIRepositoryCredentials = ociCredsBlocks
 
 	// Replace all env vars
 	for k, v := range result.Providers {
@@ -197,9 +220,9 @@ func loadConfigDir(path string) (*Config, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 	result := &Config{}
 
-	entries, err := ioutil.ReadDir(path)
+	entries, err := os.ReadDir(path)
 	if err != nil {
-		diags = diags.Append(fmt.Errorf("Error reading %s: %s", path, err))
+		diags = diags.Append(fmt.Errorf("Error reading %s: %w", path, err))
 		return result, diags
 	}
 
@@ -235,7 +258,7 @@ func envConfig(env map[string]string) *Config {
 	config := &Config{}
 
 	if envPluginCacheDir := env[pluginCacheDirEnvVar]; envPluginCacheDir != "" {
-		// No Expandenv here, because expanding environment variables inside
+		// No ExpandEnv here, because expanding environment variables inside
 		// an environment variable would be strange and seems unnecessary.
 		// (User can expand variables into the value while setting it using
 		// standard shell features.)
@@ -292,7 +315,7 @@ func (c *Config) Validate() tfdiags.Diagnostics {
 		_, err := svchost.ForComparison(givenHost)
 		if err != nil {
 			diags = diags.Append(
-				fmt.Errorf("The host %q block has an invalid hostname: %s", givenHost, err),
+				fmt.Errorf("The host %q block has an invalid hostname: %w", givenHost, err),
 			)
 		}
 	}
@@ -302,7 +325,7 @@ func (c *Config) Validate() tfdiags.Diagnostics {
 		_, err := svchost.ForComparison(givenHost)
 		if err != nil {
 			diags = diags.Append(
-				fmt.Errorf("The credentials %q block has an invalid hostname: %s", givenHost, err),
+				fmt.Errorf("The credentials %q block has an invalid hostname: %w", givenHost, err),
 			)
 		}
 	}
@@ -321,11 +344,32 @@ func (c *Config) Validate() tfdiags.Diagnostics {
 		)
 	}
 
+	// Should have zero or one "oci_default_credentials" blocks
+	if len(c.OCIDefaultCredentials) > 1 {
+		diags = diags.Append(
+			//nolint:stylecheck // Despite typical Go idiom, our existing precedent here is to return full sentences suitable for inclusion in diagnostics.
+			fmt.Errorf("No more than one oci_default_credentials block may be specified"),
+		)
+	}
+	if len(c.OCIRepositoryCredentials) != 0 {
+		seenOCICredentialsAddrs := make(map[string]struct{})
+		for _, creds := range c.OCIRepositoryCredentials {
+			if _, ok := seenOCICredentialsAddrs[creds.RepositoryPrefix]; ok {
+				diags = diags.Append(
+					//nolint:stylecheck // Despite typical Go idiom, our existing precedent here is to return full sentences suitable for inclusion in diagnostics.
+					fmt.Errorf("Duplicate oci_credentials block for %q", creds.RepositoryPrefix),
+				)
+				continue
+			}
+			seenOCICredentialsAddrs[creds.RepositoryPrefix] = struct{}{}
+		}
+	}
+
 	if c.PluginCacheDir != "" {
 		_, err := os.Stat(c.PluginCacheDir)
 		if err != nil {
 			diags = diags.Append(
-				fmt.Errorf("The specified plugin cache dir %s cannot be opened: %s", c.PluginCacheDir, err),
+				fmt.Errorf("The specified plugin cache dir %s cannot be opened: %w", c.PluginCacheDir, err),
 			)
 		}
 	}
@@ -405,6 +449,15 @@ func (c *Config) Merge(c2 *Config) *Config {
 	if (len(c.ProviderInstallation) + len(c2.ProviderInstallation)) > 0 {
 		result.ProviderInstallation = append(result.ProviderInstallation, c.ProviderInstallation...)
 		result.ProviderInstallation = append(result.ProviderInstallation, c2.ProviderInstallation...)
+	}
+
+	if (len(c.OCIDefaultCredentials) + len(c2.OCIDefaultCredentials)) > 0 {
+		result.OCIDefaultCredentials = append(result.OCIDefaultCredentials, c.OCIDefaultCredentials...)
+		result.OCIDefaultCredentials = append(result.OCIDefaultCredentials, c2.OCIDefaultCredentials...)
+	}
+	if (len(c.OCIRepositoryCredentials) + len(c2.OCIRepositoryCredentials)) > 0 {
+		result.OCIRepositoryCredentials = append(result.OCIRepositoryCredentials, c.OCIRepositoryCredentials...)
+		result.OCIRepositoryCredentials = append(result.OCIRepositoryCredentials, c2.OCIRepositoryCredentials...)
 	}
 
 	return &result

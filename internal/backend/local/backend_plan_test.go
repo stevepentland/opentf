@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package local
@@ -12,20 +14,21 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/clistate"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/depsfile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/initwd"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans/planfile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/clistate"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/depsfile"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/initwd"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/plans/planfile"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/terminal"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 func TestLocal_planBasic(t *testing.T) {
@@ -121,19 +124,19 @@ func TestLocal_planNoConfig(t *testing.T) {
 func TestLocal_plan_context_error(t *testing.T) {
 	b := TestLocal(t)
 
-	// This is an intentionally-invalid value to make terraform.NewContext fail
+	// This is an intentionally-invalid value to make tofu.NewContext fail
 	// when b.Operation calls it.
 	// NOTE: This test was originally using a provider initialization failure
-	// as its forced error condition, but terraform.NewContext is no longer
+	// as its forced error condition, but tofu.NewContext is no longer
 	// responsible for checking that. Invalid parallelism is the last situation
-	// where terraform.NewContext can return error diagnostics, and arguably
+	// where tofu.NewContext can return error diagnostics, and arguably
 	// we should be validating this argument at the UI layer anyway, so perhaps
-	// in future we'll make terraform.NewContext never return errors and then
+	// in future we'll make tofu.NewContext never return errors and then
 	// this test will become redundant, because its purpose is specifically
-	// to test that we properly unlock the state if terraform.NewContext
+	// to test that we properly unlock the state if tofu.NewContext
 	// returns an error.
 	if b.ContextOpts == nil {
-		b.ContextOpts = &opentf.ContextOpts{}
+		b.ContextOpts = &tofu.ContextOpts{}
 	}
 	b.ContextOpts.Parallelism = -1
 
@@ -229,8 +232,8 @@ Changes to Outputs:
   ~ sensitive_after  = (sensitive value)
   ~ sensitive_before = (sensitive value)
 
-You can apply this plan to save these new output values to the OpenTF state,
-without changing any real infrastructure.
+You can apply this plan to save these new output values to the OpenTofu
+state, without changing any real infrastructure.
 `)
 
 	if output := done(t).Stdout(); !strings.Contains(output, expectedOutput) {
@@ -322,11 +325,11 @@ func TestLocal_planTainted(t *testing.T) {
 		t.Fatal("plan should not be empty")
 	}
 
-	expectedOutput := `OpenTF used the selected providers to generate the following execution plan.
-Resource actions are indicated with the following symbols:
+	expectedOutput := `OpenTofu used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
 -/+ destroy and then create replacement
 
-OpenTF will perform the following actions:
+OpenTofu will perform the following actions:
 
   # test_instance.foo is tainted, so it must be replaced
 -/+ resource "test_instance" "foo" {
@@ -366,6 +369,7 @@ func TestLocal_planDeposedOnly(t *testing.T) {
 				Provider: addrs.NewDefaultProvider("test"),
 				Module:   addrs.RootModule,
 			},
+			addrs.NoKey,
 		)
 	}))
 	outDir := t.TempDir()
@@ -403,12 +407,12 @@ func TestLocal_planDeposedOnly(t *testing.T) {
 
 	// The deposed object and the current object are distinct, so our
 	// plan includes separate actions for each of them. This strange situation
-	// is not common: it should arise only if OpenTF fails during
+	// is not common: it should arise only if OpenTofu fails during
 	// a create-before-destroy when the "create" hasn't completed yet but
 	// in a severe way that prevents the previous object from being restored
 	// as "current".
 	//
-	// However, that situation was more common in some earlier OpenTF
+	// However, that situation was more common in some earlier OpenTofu
 	// versions where deposed objects were not managed properly, so this
 	// can arise when upgrading from an older version with deposed objects
 	// already in the state.
@@ -416,16 +420,16 @@ func TestLocal_planDeposedOnly(t *testing.T) {
 	// This is one of the few cases where we expose the idea of "deposed" in
 	// the UI, including the user-unfriendly "deposed key" (00000000 in this
 	// case) just so that users can correlate this with what they might
-	// see in `opentf show` and in the subsequent apply output, because
+	// see in `tofu show` and in the subsequent apply output, because
 	// it's also possible for there to be _multiple_ deposed objects, in the
 	// unlikely event that create_before_destroy _keeps_ crashing across
 	// subsequent runs.
-	expectedOutput := `OpenTF used the selected providers to generate the following execution plan.
-Resource actions are indicated with the following symbols:
+	expectedOutput := `OpenTofu used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
   + create
   - destroy
 
-OpenTF will perform the following actions:
+OpenTofu will perform the following actions:
 
   # test_instance.foo will be created
   + resource "test_instance" "foo" {
@@ -492,11 +496,11 @@ func TestLocal_planTainted_createBeforeDestroy(t *testing.T) {
 		t.Fatal("plan should not be empty")
 	}
 
-	expectedOutput := `OpenTF used the selected providers to generate the following execution plan.
-Resource actions are indicated with the following symbols:
+	expectedOutput := `OpenTofu used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
 +/- create replacement and then destroy
 
-OpenTF will perform the following actions:
+OpenTofu will perform the following actions:
 
   # test_instance.foo is tainted, so it must be replaced
 +/- resource "test_instance" "foo" {
@@ -634,7 +638,7 @@ func TestLocal_planDestroy_withDataSources(t *testing.T) {
 		t.Fatal("plan should not be empty")
 	}
 
-	// Data source should still exist in the the plan file
+	// Data source should still exist in the plan file
 	plan := testReadPlan(t, planPath)
 	if len(plan.Changes.Resources) != 2 {
 		t.Fatalf("Expected exactly 1 resource for destruction, %d given: %q",
@@ -642,7 +646,7 @@ func TestLocal_planDestroy_withDataSources(t *testing.T) {
 	}
 
 	// Data source should not be rendered in the output
-	expectedOutput := `OpenTF will perform the following actions:
+	expectedOutput := `OpenTofu will perform the following actions:
 
   # test_instance.foo[0] will be destroyed
   - resource "test_instance" "foo" {
@@ -725,10 +729,11 @@ func testOperationPlan(t *testing.T, configDir string) (*backend.Operation, func
 	// Many of our tests use an overridden "test" provider that's just in-memory
 	// inside the test process, not a separate plugin on disk.
 	depLocks := depsfile.NewLocks()
-	depLocks.SetProviderOverridden(addrs.MustParseProviderSourceString("registry.terraform.io/hashicorp/test"))
+	depLocks.SetProviderOverridden(addrs.MustParseProviderSourceString("registry.opentofu.org/hashicorp/test"))
 
 	return &backend.Operation{
 		Type:            backend.OperationTypePlan,
+		Encryption:      encryption.Disabled(),
 		ConfigDir:       configDir,
 		ConfigLoader:    configLoader,
 		StateLocker:     clistate.NewNoopLocker(),
@@ -761,6 +766,7 @@ func testPlanState() *states.State {
 			Provider: addrs.NewDefaultProvider("test"),
 			Module:   addrs.RootModule,
 		},
+		addrs.NoKey,
 	)
 	return state
 }
@@ -788,6 +794,7 @@ func testPlanState_withDataSource() *states.State {
 			Provider: addrs.NewDefaultProvider("test"),
 			Module:   addrs.RootModule,
 		},
+		addrs.NoKey,
 	)
 	rootModule.SetResourceInstanceCurrent(
 		addrs.Resource{
@@ -805,6 +812,7 @@ func testPlanState_withDataSource() *states.State {
 			Provider: addrs.NewDefaultProvider("test"),
 			Module:   addrs.RootModule,
 		},
+		addrs.NoKey,
 	)
 	return state
 }
@@ -832,6 +840,7 @@ func testPlanState_tainted() *states.State {
 			Provider: addrs.NewDefaultProvider("test"),
 			Module:   addrs.RootModule,
 		},
+		addrs.NoKey,
 	)
 	return state
 }
@@ -839,11 +848,10 @@ func testPlanState_tainted() *states.State {
 func testReadPlan(t *testing.T, path string) *plans.Plan {
 	t.Helper()
 
-	p, err := planfile.Open(path)
+	p, err := planfile.Open(path, encryption.PlanEncryptionDisabled())
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
-	defer p.Close()
 
 	plan, err := p.ReadPlan()
 	if err != nil {

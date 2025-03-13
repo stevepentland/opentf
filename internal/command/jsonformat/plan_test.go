@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package jsonformat
@@ -12,19 +14,19 @@ import (
 	"github.com/mitchellh/colorstring"
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/differ"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/structured"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/structured/attribute_path"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonplan"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonprovider"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/lang/marks"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/differ"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/structured"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/structured/attribute_path"
+	"github.com/opentofu/opentofu/internal/command/jsonplan"
+	"github.com/opentofu/opentofu/internal/command/jsonprovider"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/lang/marks"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/terminal"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 func TestRenderHuman_EmptyPlan(t *testing.T) {
@@ -39,7 +41,7 @@ func TestRenderHuman_EmptyPlan(t *testing.T) {
 	want := `
 No changes. Your infrastructure matches the configuration.
 
-OpenTF has compared your real infrastructure against your configuration and
+OpenTofu has compared your real infrastructure against your configuration and
 found no differences, so no changes are needed.
 `
 
@@ -70,7 +72,7 @@ func TestRenderHuman_EmptyOutputs(t *testing.T) {
 	want := `
 No changes. Your infrastructure matches the configuration.
 
-OpenTF has compared your real infrastructure against your configuration and
+OpenTofu has compared your real infrastructure against your configuration and
 found no differences, so no changes are needed.
 `
 
@@ -133,7 +135,7 @@ func TestRenderHuman_Imports(t *testing.T) {
 				},
 			},
 			output: `
-OpenTF will perform the following actions:
+OpenTofu will perform the following actions:
 
   # test_resource.resource will be imported
     resource "test_resource" "resource" {
@@ -175,7 +177,7 @@ Plan: 1 to import, 0 to add, 0 to change, 0 to destroy.
 				},
 			},
 			output: `
-OpenTF will perform the following actions:
+OpenTofu will perform the following actions:
 
   # test_resource.resource will be imported
   # (config will be generated)
@@ -215,7 +217,7 @@ Plan: 1 to import, 0 to add, 0 to change, 0 to destroy.
 				},
 			},
 			output: `
-OpenTF will perform the following actions:
+OpenTofu will perform the following actions:
 
   # test_resource.before has moved to test_resource.after
   # (imported from "1D5F5E9E-F2E5-401B-9ED5-692A215AC67E")
@@ -255,11 +257,11 @@ Plan: 1 to import, 0 to add, 0 to change, 0 to destroy.
 				},
 			},
 			output: `
-OpenTF used the selected providers to generate the following execution plan.
-Resource actions are indicated with the following symbols:
+OpenTofu used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
   ~ update in-place
 
-OpenTF will perform the following actions:
+OpenTofu will perform the following actions:
 
   # test_resource.after will be updated in-place
   # (moved from test_resource.before)
@@ -299,11 +301,11 @@ Plan: 1 to import, 0 to add, 1 to change, 0 to destroy.
 				},
 			},
 			output: `
-OpenTF used the selected providers to generate the following execution plan.
-Resource actions are indicated with the following symbols:
+OpenTofu used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
   ~ update in-place
 
-OpenTF will perform the following actions:
+OpenTofu will perform the following actions:
 
   # test_resource.resource will be updated in-place
   # (imported from "1D5F5E9E-F2E5-401B-9ED5-692A215AC67E")
@@ -340,11 +342,11 @@ Plan: 1 to import, 0 to add, 1 to change, 0 to destroy.
 				},
 			},
 			output: `
-OpenTF used the selected providers to generate the following execution plan.
-Resource actions are indicated with the following symbols:
+OpenTofu used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
   ~ update in-place
 
-OpenTF will perform the following actions:
+OpenTofu will perform the following actions:
 
   # test_resource.resource will be updated in-place
   # (will be imported first)
@@ -385,11 +387,11 @@ Plan: 1 to import, 0 to add, 1 to change, 0 to destroy.
 				},
 			},
 			output: `
-OpenTF used the selected providers to generate the following execution plan.
-Resource actions are indicated with the following symbols:
+OpenTofu used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
 +/- create replacement and then destroy
 
-OpenTF will perform the following actions:
+OpenTofu will perform the following actions:
 
   # test_resource.resource must be replaced
   # (imported from "1D5F5E9E-F2E5-401B-9ED5-692A215AC67E")
@@ -567,6 +569,44 @@ func TestResourceChange_primitiveTypes(t *testing.T) {
   - resource "test_instance" "example" {
       - id = "i-02ae66f368e8518a9" -> null
     }`,
+		},
+		"forget": {
+			Action: plans.Forget,
+			Mode:   addrs.ManagedResourceMode,
+			Before: cty.ObjectVal(map[string]cty.Value{
+				"id": cty.StringVal("i-02ae66f368e8518a9"),
+			}),
+			After: cty.NullVal(cty.EmptyObject),
+			Schema: &configschema.Block{
+				Attributes: map[string]*configschema.Attribute{
+					"id": {Type: cty.String, Computed: true},
+				},
+			},
+			RequiredReplace: cty.NewPathSet(),
+			ExpectedOutput: `  # test_instance.example will be removed from the OpenTofu state but will not be destroyed
+  . resource "test_instance" "example" {
+    id = "i-02ae66f368e8518a9"
+}`,
+		},
+		"forget a deposed object": {
+			Action:     plans.Forget,
+			Mode:       addrs.ManagedResourceMode,
+			DeposedKey: states.DeposedKey("byebye"),
+			Before: cty.ObjectVal(map[string]cty.Value{
+				"id": cty.StringVal("i-02ae66f368e8518a9"),
+			}),
+			After: cty.NullVal(cty.EmptyObject),
+			Schema: &configschema.Block{
+				Attributes: map[string]*configschema.Attribute{
+					"id": {Type: cty.String, Computed: true},
+				},
+			},
+			RequiredReplace: cty.NewPathSet(),
+			ExpectedOutput: `  # test_instance.example (deposed object byebye) will be removed from the OpenTofu state but will not be destroyed
+  # (left over from a partially-failed replacement of this instance)
+  . resource "test_instance" "example" {
+    id = "i-02ae66f368e8518a9"
+}`,
 		},
 		"string in-place update": {
 			Action: plans.Update,
@@ -5886,6 +5926,41 @@ func TestResourceChange_actionReason(t *testing.T) {
 			ExpectedOutput: `  # test_instance.example must be replaced
 +/- resource "test_instance" "example" {}`,
 		},
+		"forget for no particular reason": {
+			Action:          plans.Forget,
+			ActionReason:    plans.ResourceInstanceChangeNoReason,
+			Mode:            addrs.ManagedResourceMode,
+			Before:          emptyVal,
+			After:           nullVal,
+			Schema:          emptySchema,
+			RequiredReplace: cty.NewPathSet(),
+			ExpectedOutput: `  # test_instance.example will be removed from the OpenTofu state but will not be destroyed
+  . resource "test_instance" "example" {}`,
+		},
+		"forget because no resource configuration": {
+			Action:          plans.Forget,
+			ActionReason:    plans.ResourceInstanceDeleteBecauseNoResourceConfig,
+			ModuleInst:      addrs.RootModuleInstance.Child("foo", addrs.NoKey),
+			Mode:            addrs.ManagedResourceMode,
+			Before:          emptyVal,
+			After:           nullVal,
+			Schema:          emptySchema,
+			RequiredReplace: cty.NewPathSet(),
+			ExpectedOutput: `  # module.foo.test_instance.example will be removed from the OpenTofu state but will not be destroyed
+  . resource "test_instance" "example" {}`,
+		},
+		"forget because no module": {
+			Action:          plans.Forget,
+			ActionReason:    plans.ResourceInstanceDeleteBecauseNoModule,
+			ModuleInst:      addrs.RootModuleInstance.Child("foo", addrs.IntKey(1)),
+			Mode:            addrs.ManagedResourceMode,
+			Before:          emptyVal,
+			After:           nullVal,
+			Schema:          emptySchema,
+			RequiredReplace: cty.NewPathSet(),
+			ExpectedOutput: `  # module.foo[1].test_instance.example will be removed from the OpenTofu state but will not be destroyed
+  . resource "test_instance" "example" {}`,
+		},
 	}
 
 	runTestCases(t, testCases)
@@ -6682,6 +6757,105 @@ func TestResourceChange_sensitiveVariable(t *testing.T) {
         }
     }`,
 		},
+		"forget": {
+			Action: plans.Forget,
+			Mode:   addrs.ManagedResourceMode,
+			Before: cty.ObjectVal(map[string]cty.Value{
+				"id":  cty.StringVal("i-02ae66f368e8518a9"),
+				"ami": cty.StringVal("ami-BEFORE"),
+				"list_field": cty.ListVal([]cty.Value{
+					cty.StringVal("hello"),
+					cty.StringVal("friends"),
+				}),
+				"map_key": cty.MapVal(map[string]cty.Value{
+					"breakfast": cty.NumberIntVal(800),
+					"dinner":    cty.NumberIntVal(2000), // sensitive key
+				}),
+				"map_whole": cty.MapVal(map[string]cty.Value{
+					"breakfast": cty.StringVal("pizza"),
+					"dinner":    cty.StringVal("pizza"),
+				}),
+				"nested_block": cty.ListVal([]cty.Value{
+					cty.ObjectVal(map[string]cty.Value{
+						"an_attr": cty.StringVal("secret"),
+						"another": cty.StringVal("not secret"),
+					}),
+				}),
+				"nested_block_set": cty.ListVal([]cty.Value{
+					cty.ObjectVal(map[string]cty.Value{
+						"an_attr": cty.StringVal("secret"),
+						"another": cty.StringVal("not secret"),
+					}),
+				}),
+			}),
+			After: cty.NullVal(cty.EmptyObject),
+			BeforeValMarks: []cty.PathValueMarks{
+				{
+					Path:  cty.Path{cty.GetAttrStep{Name: "ami"}},
+					Marks: cty.NewValueMarks(marks.Sensitive),
+				},
+				{
+					Path:  cty.Path{cty.GetAttrStep{Name: "list_field"}, cty.IndexStep{Key: cty.NumberIntVal(1)}},
+					Marks: cty.NewValueMarks(marks.Sensitive),
+				},
+				{
+					Path:  cty.Path{cty.GetAttrStep{Name: "map_key"}, cty.IndexStep{Key: cty.StringVal("dinner")}},
+					Marks: cty.NewValueMarks(marks.Sensitive),
+				},
+				{
+					Path:  cty.Path{cty.GetAttrStep{Name: "map_whole"}},
+					Marks: cty.NewValueMarks(marks.Sensitive),
+				},
+				{
+					Path:  cty.Path{cty.GetAttrStep{Name: "nested_block"}},
+					Marks: cty.NewValueMarks(marks.Sensitive),
+				},
+				{
+					Path:  cty.Path{cty.GetAttrStep{Name: "nested_block_set"}},
+					Marks: cty.NewValueMarks(marks.Sensitive),
+				},
+			},
+			RequiredReplace: cty.NewPathSet(),
+			Schema: &configschema.Block{
+				Attributes: map[string]*configschema.Attribute{
+					"id":         {Type: cty.String, Optional: true, Computed: true},
+					"ami":        {Type: cty.String, Optional: true},
+					"list_field": {Type: cty.List(cty.String), Optional: true},
+					"map_key":    {Type: cty.Map(cty.Number), Optional: true},
+					"map_whole":  {Type: cty.Map(cty.String), Optional: true},
+				},
+				BlockTypes: map[string]*configschema.NestedBlock{
+					"nested_block_set": {
+						Block: configschema.Block{
+							Attributes: map[string]*configschema.Attribute{
+								"an_attr": {Type: cty.String, Optional: true},
+								"another": {Type: cty.String, Optional: true},
+							},
+						},
+						Nesting: configschema.NestingSet,
+					},
+				},
+			},
+			ExpectedOutput: `  # test_instance.example will be removed from the OpenTofu state but will not be destroyed
+  . resource "test_instance" "example" {
+    ami        = (sensitive value)
+    id         = "i-02ae66f368e8518a9"
+    list_field = [
+        "hello",
+        (sensitive value),
+    ]
+    map_key    = {
+        "breakfast" = 800
+        "dinner"    = (sensitive value)
+    }
+    map_whole  = (sensitive value)
+
+    nested_block_set {
+      # At least one attribute in this block is (or was) sensitive,
+      # so its contents will not be displayed.
+    }
+}`,
+		},
 		"update with sensitive value forcing replacement": {
 			Action: plans.DeleteThenCreate,
 			Mode:   addrs.ManagedResourceMode,
@@ -6898,6 +7072,32 @@ func TestResourceChange_moved(t *testing.T) {
         # (2 unchanged attributes hidden)
     }`,
 		},
+		"moved and forgotten": {
+			PrevRunAddr: prevRunAddr,
+			Action:      plans.Forget,
+			Mode:        addrs.ManagedResourceMode,
+			Before: cty.ObjectVal(map[string]cty.Value{
+				"id":  cty.StringVal("12345"),
+				"foo": cty.StringVal("hello"),
+				"bar": cty.StringVal("baz"),
+			}),
+			After: cty.ObjectVal(map[string]cty.Value{
+				"id":  cty.StringVal("12345"),
+				"foo": cty.StringVal("hello"),
+				"bar": cty.StringVal("boop"),
+			}),
+			Schema: &configschema.Block{
+				Attributes: map[string]*configschema.Attribute{
+					"id": {Type: cty.String, Computed: true},
+				},
+			},
+			RequiredReplace: cty.NewPathSet(),
+			ExpectedOutput: `  # test_instance.example will be removed from the OpenTofu state but will not be destroyed
+  # (moved from test_instance.previous)
+  . resource "test_instance" "example" {
+    id = "12345"
+}`,
+		},
 	}
 
 	runTestCases(t, testCases)
@@ -6958,12 +7158,12 @@ func runTestCases(t *testing.T, testCases map[string]testCase) {
 
 			beforeDynamicValue, err := plans.NewDynamicValue(beforeVal, ty)
 			if err != nil {
-				t.Fatalf("failed to create dynamic before value: " + err.Error())
+				t.Fatalf("failed to create dynamic before value: %s", err.Error())
 			}
 
 			afterDynamicValue, err := plans.NewDynamicValue(afterVal, ty)
 			if err != nil {
-				t.Fatalf("failed to create dynamic after value: " + err.Error())
+				t.Fatalf("failed to create dynamic after value: %s", err.Error())
 			}
 
 			src := &plans.ResourceInstanceChangeSrc{
@@ -6986,7 +7186,7 @@ func runTestCases(t *testing.T, testCases map[string]testCase) {
 				RequiredReplace: tc.RequiredReplace,
 			}
 
-			tfschemas := &opentf.Schemas{
+			tfschemas := &tofu.Schemas{
 				Providers: map[addrs.Provider]providers.ProviderSchema{
 					src.ProviderAddr.Provider: {
 						ResourceTypes: map[string]providers.Schema{
@@ -7004,7 +7204,7 @@ func runTestCases(t *testing.T, testCases map[string]testCase) {
 			}
 			jsonchanges, err := jsonplan.MarshalResourceChanges([]*plans.ResourceInstanceChangeSrc{src}, tfschemas)
 			if err != nil {
-				t.Errorf("failed to marshal resource changes: " + err.Error())
+				t.Errorf("failed to marshal resource changes: %s", err.Error())
 				return
 			}
 
