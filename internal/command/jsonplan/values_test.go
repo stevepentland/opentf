@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package jsonplan
@@ -10,11 +12,12 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 func TestMarshalAttributeValues(t *testing.T) {
@@ -204,7 +207,7 @@ func TestMarshalPlanResources(t *testing.T) {
 				Type:            "test_thing",
 				Name:            "example",
 				Index:           addrs.InstanceKey(nil),
-				ProviderName:    "registry.terraform.io/hashicorp/test",
+				ProviderName:    "registry.opentofu.org/hashicorp/test",
 				SchemaVersion:   1,
 				AttributeValues: AttributeValues{},
 				SensitiveValues: json.RawMessage("{}"),
@@ -247,7 +250,7 @@ func TestMarshalPlanResources(t *testing.T) {
 				Type:          "test_thing",
 				Name:          "example",
 				Index:         addrs.InstanceKey(nil),
-				ProviderName:  "registry.terraform.io/hashicorp/test",
+				ProviderName:  "registry.opentofu.org/hashicorp/test",
 				SchemaVersion: 1,
 				AttributeValues: AttributeValues{
 					"woozles": json.RawMessage(`"baz"`),
@@ -293,7 +296,7 @@ func TestMarshalPlanResources(t *testing.T) {
 
 			ris := testResourceAddrs()
 
-			got, err := marshalPlanResources(testChange, ris, testSchemas())
+			got, err := marshalPlanResources(testChanges(testChange), ris, testSchemas())
 			if test.Err {
 				if err == nil {
 					t.Fatal("succeeded; want error")
@@ -344,8 +347,8 @@ func TestMarshalPlanValuesNoopDeposed(t *testing.T) {
 	}
 }
 
-func testSchemas() *opentf.Schemas {
-	return &opentf.Schemas{
+func testSchemas() *tofu.Schemas {
+	return &tofu.Schemas{
 		Providers: map[addrs.Provider]providers.ProviderSchema{
 			addrs.NewDefaultProvider("test"): providers.ProviderSchema{
 				ResourceTypes: map[string]providers.Schema{
@@ -362,6 +365,16 @@ func testSchemas() *opentf.Schemas {
 			},
 		},
 	}
+}
+
+func testChanges(changes *plans.Changes) map[string]*plans.ResourceInstanceChangeSrc {
+	ret := make(map[string]*plans.ResourceInstanceChangeSrc)
+	for _, resource := range changes.Resources {
+		if resource.DeposedKey == states.NotDeposed {
+			ret[resource.Addr.String()] = resource
+		}
+	}
+	return ret
 }
 
 func testResourceAddrs() []addrs.AbsResourceInstance {

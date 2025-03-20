@@ -1,15 +1,17 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package differ
 
 import (
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/collections"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/computed"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/computed/renderers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/structured"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonprovider"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/collections"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/computed"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/computed/renderers"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/structured"
+	"github.com/opentofu/opentofu/internal/command/jsonprovider"
+	"github.com/opentofu/opentofu/internal/plans"
 )
 
 func ComputeDiffForBlock(change structured.Change, block *jsonprovider.Block) computed.Diff {
@@ -68,45 +70,53 @@ func ComputeDiffForBlock(change structured.Change, block *jsonprovider.Block) co
 	}
 
 	for key, blockType := range block.BlockTypes {
-		childValue := blockValue.GetChild(key)
+		childChange := blockValue.GetChild(key)
 
-		if !childValue.RelevantAttributes.MatchesPartial() {
+		if !childChange.RelevantAttributes.MatchesPartial() {
 			// Mark non-relevant attributes as unchanged.
-			childValue = childValue.AsNoOp()
+			childChange = childChange.AsNoOp()
 		}
 
-		beforeSensitive := childValue.IsBeforeSensitive()
-		afterSensitive := childValue.IsAfterSensitive()
-		forcesReplacement := childValue.ReplacePaths.Matches()
+		beforeSensitive := childChange.IsBeforeSensitive()
+		afterSensitive := childChange.IsAfterSensitive()
+		forcesReplacement := childChange.ReplacePaths.Matches()
+
+		if diff, ok := checkForUnknownBlock(childChange, block); ok {
+			if diff.Action == plans.NoOp && childChange.Before == nil && childChange.After == nil {
+				continue
+			}
+			blocks.AddSingleBlock(key, diff, forcesReplacement, beforeSensitive, afterSensitive)
+			continue
+		}
 
 		switch NestingMode(blockType.NestingMode) {
 		case nestingModeSet:
-			diffs, action := computeBlockDiffsAsSet(childValue, blockType.Block)
-			if action == plans.NoOp && childValue.Before == nil && childValue.After == nil {
+			diffs, action := computeBlockDiffsAsSet(childChange, blockType.Block)
+			if action == plans.NoOp && childChange.Before == nil && childChange.After == nil {
 				// Don't record nil values in blocks.
 				continue
 			}
 			blocks.AddAllSetBlock(key, diffs, forcesReplacement, beforeSensitive, afterSensitive)
 			current = collections.CompareActions(current, action)
 		case nestingModeList:
-			diffs, action := computeBlockDiffsAsList(childValue, blockType.Block)
-			if action == plans.NoOp && childValue.Before == nil && childValue.After == nil {
+			diffs, action := computeBlockDiffsAsList(childChange, blockType.Block)
+			if action == plans.NoOp && childChange.Before == nil && childChange.After == nil {
 				// Don't record nil values in blocks.
 				continue
 			}
 			blocks.AddAllListBlock(key, diffs, forcesReplacement, beforeSensitive, afterSensitive)
 			current = collections.CompareActions(current, action)
 		case nestingModeMap:
-			diffs, action := computeBlockDiffsAsMap(childValue, blockType.Block)
-			if action == plans.NoOp && childValue.Before == nil && childValue.After == nil {
+			diffs, action := computeBlockDiffsAsMap(childChange, blockType.Block)
+			if action == plans.NoOp && childChange.Before == nil && childChange.After == nil {
 				// Don't record nil values in blocks.
 				continue
 			}
 			blocks.AddAllMapBlocks(key, diffs, forcesReplacement, beforeSensitive, afterSensitive)
 			current = collections.CompareActions(current, action)
 		case nestingModeSingle, nestingModeGroup:
-			diff := ComputeDiffForBlock(childValue, blockType.Block)
-			if diff.Action == plans.NoOp && childValue.Before == nil && childValue.After == nil {
+			diff := ComputeDiffForBlock(childChange, blockType.Block)
+			if diff.Action == plans.NoOp && childChange.Before == nil && childChange.After == nil {
 				// Don't record nil values in blocks.
 				continue
 			}

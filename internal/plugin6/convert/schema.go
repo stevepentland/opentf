@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package convert
@@ -8,9 +10,9 @@ import (
 	"reflect"
 	"sort"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	proto "github.com/placeholderplaceholderplaceholder/opentf/internal/tfplugin6"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/providers"
+	proto "github.com/opentofu/opentofu/internal/tfplugin6"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -102,8 +104,8 @@ func ProtoToProviderSchema(s *proto.Schema) providers.Schema {
 	}
 }
 
-// ProtoToConfigSchema takes the GetSchcema_Block from a grpc response and converts it
-// to a terraform *configschema.Block.
+// ProtoToConfigSchema takes the Schema_Block from a grpc response and converts it
+// to a tofu *configschema.Block.
 func ProtoToConfigSchema(b *proto.Schema_Block) *configschema.Block {
 	block := &configschema.Block{
 		Attributes: make(map[string]*configschema.Attribute),

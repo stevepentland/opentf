@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package json
@@ -7,8 +9,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/plans"
 )
 
 type Hook interface {
@@ -317,6 +319,8 @@ func startActionVerb(action plans.Action) string {
 		// This is not currently possible to reach, as we receive separate
 		// passes for create and delete
 		return "Replacing"
+	case plans.Forget:
+		return "Removing"
 	case plans.NoOp:
 		// This should never be possible: a no-op planned change should not
 		// be applied. We'll fall back to "Applying".
@@ -343,6 +347,8 @@ func progressActionVerb(action plans.Action) string {
 		// This is not currently possible to reach, as we receive separate
 		// passes for create and delete
 		return "replacing"
+	case plans.Forget:
+		return "removing"
 	case plans.NoOp:
 		// This should never be possible: a no-op planned change should not
 		// be applied. We'll fall back to "applying".
@@ -369,6 +375,8 @@ func actionNoun(action plans.Action) string {
 		// This is not currently possible to reach, as we receive separate
 		// passes for create and delete
 		return "Replacement"
+	case plans.Forget:
+		return "Removal"
 	case plans.NoOp:
 		// This should never be possible: a no-op planned change should not
 		// be applied. We'll fall back to "Apply".

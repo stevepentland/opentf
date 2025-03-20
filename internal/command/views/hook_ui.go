@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -14,12 +16,12 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/format"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/command/format"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 const defaultPeriodicUiTimer = 10 * time.Second
@@ -33,19 +35,26 @@ func NewUiHook(view *View) *UiHook {
 	}
 }
 
-type UiHook struct {
-	opentf.NilHook
+func NewUIOptionalHook(view *View) tofu.Hook {
+	if view.concise {
+		return &tofu.NilHook{}
+	}
+	return NewUiHook(view)
+}
 
-	view     *View
+type UiHook struct {
+	tofu.NilHook
+
 	viewLock sync.Mutex
+	view     *View
 
 	periodicUiTimer time.Duration
 
-	resources     map[string]uiResourceState
 	resourcesLock sync.Mutex
+	resources     map[string]uiResourceState
 }
 
-var _ opentf.Hook = (*UiHook)(nil)
+var _ tofu.Hook = (*UiHook)(nil)
 
 // uiResourceState tracks the state of a single resource
 type uiResourceState struct {
@@ -71,7 +80,7 @@ const (
 	uiResourceNoOp
 )
 
-func (h *UiHook) PreApply(addr addrs.AbsResourceInstance, gen states.Generation, action plans.Action, priorState, plannedNewState cty.Value) (opentf.HookAction, error) {
+func (h *UiHook) PreApply(addr addrs.AbsResourceInstance, gen states.Generation, action plans.Action, priorState, plannedNewState cty.Value) (tofu.HookAction, error) {
 	dispAddr := addr.String()
 	if gen != states.CurrentGen {
 		dispAddr = fmt.Sprintf("%s (deposed object %s)", dispAddr, gen)
@@ -99,7 +108,7 @@ func (h *UiHook) PreApply(addr addrs.AbsResourceInstance, gen states.Generation,
 		// We don't expect any other actions in here, so anything else is a
 		// bug in the caller but we'll ignore it in order to be robust.
 		h.println(fmt.Sprintf("(Unknown action %s for %s)", action, dispAddr))
-		return opentf.HookActionContinue, nil
+		return tofu.HookActionContinue, nil
 	}
 
 	var stateIdSuffix string
@@ -141,7 +150,7 @@ func (h *UiHook) PreApply(addr addrs.AbsResourceInstance, gen states.Generation,
 		go h.stillApplying(uiState)
 	}
 
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
 func (h *UiHook) stillApplying(state uiResourceState) {
@@ -184,7 +193,7 @@ func (h *UiHook) stillApplying(state uiResourceState) {
 	}
 }
 
-func (h *UiHook) PostApply(addr addrs.AbsResourceInstance, gen states.Generation, newState cty.Value, applyerr error) (opentf.HookAction, error) {
+func (h *UiHook) PostApply(addr addrs.AbsResourceInstance, gen states.Generation, newState cty.Value, applyerr error) (tofu.HookAction, error) {
 	id := addr.String()
 
 	h.resourcesLock.Lock()
@@ -213,14 +222,14 @@ func (h *UiHook) PostApply(addr addrs.AbsResourceInstance, gen states.Generation
 		msg = "Read complete"
 	case uiResourceNoOp:
 		// We don't make any announcements about no-op changes
-		return opentf.HookActionContinue, nil
+		return tofu.HookActionContinue, nil
 	case uiResourceUnknown:
-		return opentf.HookActionContinue, nil
+		return tofu.HookActionContinue, nil
 	}
 
 	if applyerr != nil {
 		// Errors are collected and printed in ApplyCommand, no need to duplicate
-		return opentf.HookActionContinue, nil
+		return tofu.HookActionContinue, nil
 	}
 
 	addrStr := addr.String()
@@ -234,15 +243,15 @@ func (h *UiHook) PostApply(addr addrs.AbsResourceInstance, gen states.Generation
 
 	h.println(colorized)
 
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
-func (h *UiHook) PreProvisionInstanceStep(addr addrs.AbsResourceInstance, typeName string) (opentf.HookAction, error) {
+func (h *UiHook) PreProvisionInstanceStep(addr addrs.AbsResourceInstance, typeName string) (tofu.HookAction, error) {
 	h.println(fmt.Sprintf(
 		h.view.colorize.Color("[reset][bold]%s: Provisioning with '%s'...[reset]"),
 		addr, typeName,
 	))
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
 func (h *UiHook) ProvisionOutput(addr addrs.AbsResourceInstance, typeName string, msg string) {
@@ -264,7 +273,7 @@ func (h *UiHook) ProvisionOutput(addr addrs.AbsResourceInstance, typeName string
 	h.println(strings.TrimSpace(buf.String()))
 }
 
-func (h *UiHook) PreRefresh(addr addrs.AbsResourceInstance, gen states.Generation, priorState cty.Value) (opentf.HookAction, error) {
+func (h *UiHook) PreRefresh(addr addrs.AbsResourceInstance, gen states.Generation, priorState cty.Value) (tofu.HookAction, error) {
 	var stateIdSuffix string
 	if k, v := format.ObjectValueID(priorState); k != "" && v != "" {
 		stateIdSuffix = fmt.Sprintf(" [%s=%s]", k, v)
@@ -274,22 +283,21 @@ func (h *UiHook) PreRefresh(addr addrs.AbsResourceInstance, gen states.Generatio
 	if depKey, ok := gen.(states.DeposedKey); ok {
 		addrStr = fmt.Sprintf("%s (deposed object %s)", addrStr, depKey)
 	}
-
 	h.println(fmt.Sprintf(
 		h.view.colorize.Color("[reset][bold]%s: Refreshing state...%s"),
 		addrStr, stateIdSuffix))
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
-func (h *UiHook) PreImportState(addr addrs.AbsResourceInstance, importID string) (opentf.HookAction, error) {
+func (h *UiHook) PreImportState(addr addrs.AbsResourceInstance, importID string) (tofu.HookAction, error) {
 	h.println(fmt.Sprintf(
 		h.view.colorize.Color("[reset][bold]%s: Importing from ID %q..."),
 		addr, importID,
 	))
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
-func (h *UiHook) PostImportState(addr addrs.AbsResourceInstance, imported []providers.ImportedResource) (opentf.HookAction, error) {
+func (h *UiHook) PostImportState(addr addrs.AbsResourceInstance, imported []providers.ImportedResource) (tofu.HookAction, error) {
 	h.println(fmt.Sprintf(
 		h.view.colorize.Color("[reset][bold][green]%s: Import prepared!"),
 		addr,
@@ -301,34 +309,34 @@ func (h *UiHook) PostImportState(addr addrs.AbsResourceInstance, imported []prov
 		))
 	}
 
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
-func (h *UiHook) PrePlanImport(addr addrs.AbsResourceInstance, importID string) (opentf.HookAction, error) {
+func (h *UiHook) PrePlanImport(addr addrs.AbsResourceInstance, importID string) (tofu.HookAction, error) {
 	h.println(fmt.Sprintf(
 		h.view.colorize.Color("[reset][bold]%s: Preparing import... [id=%s]"),
 		addr, importID,
 	))
 
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
-func (h *UiHook) PreApplyImport(addr addrs.AbsResourceInstance, importing plans.ImportingSrc) (opentf.HookAction, error) {
+func (h *UiHook) PreApplyImport(addr addrs.AbsResourceInstance, importing plans.ImportingSrc) (tofu.HookAction, error) {
 	h.println(fmt.Sprintf(
 		h.view.colorize.Color("[reset][bold]%s: Importing... [id=%s]"),
 		addr, importing.ID,
 	))
 
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
-func (h *UiHook) PostApplyImport(addr addrs.AbsResourceInstance, importing plans.ImportingSrc) (opentf.HookAction, error) {
+func (h *UiHook) PostApplyImport(addr addrs.AbsResourceInstance, importing plans.ImportingSrc) (tofu.HookAction, error) {
 	h.println(fmt.Sprintf(
 		h.view.colorize.Color("[reset][bold]%s: Import complete [id=%s]"),
 		addr, importing.ID,
 	))
 
-	return opentf.HookActionContinue, nil
+	return tofu.HookActionContinue, nil
 }
 
 // Wrap calls to the view so that concurrent calls do not interleave println.

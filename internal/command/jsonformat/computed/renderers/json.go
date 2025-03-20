@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package renderers
@@ -6,9 +8,9 @@ package renderers
 import (
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/computed"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/jsondiff"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/computed"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/jsondiff"
+	"github.com/opentofu/opentofu/internal/plans"
 )
 
 // RendererJsonOpts creates a jsondiff.JsonOpts object that returns the correct

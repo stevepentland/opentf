@@ -1,10 +1,11 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
 
 import (
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -20,7 +21,7 @@ func TestMetaCompletePredictWorkspaceName(t *testing.T) {
 	defer testChdir(t, td)()
 
 	// make sure a vars file doesn't interfere
-	err := ioutil.WriteFile(DefaultVarsFilename, nil, 0644)
+	err := os.WriteFile(DefaultVarsFilename, nil, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}

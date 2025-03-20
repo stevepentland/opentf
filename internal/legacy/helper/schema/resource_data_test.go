@@ -1,24 +1,24 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package schema
 
 import (
 	"fmt"
-	"math"
-	"os"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/opentf"
+	"github.com/opentofu/opentofu/internal/legacy/tofu"
 )
 
 func TestResourceDataGet(t *testing.T) {
 	cases := []struct {
 		Schema map[string]*Schema
-		State  *opentf.InstanceState
-		Diff   *opentf.InstanceDiff
+		State  *tofu.InstanceState
+		Diff   *tofu.InstanceDiff
 		Key    string
 		Value  interface{}
 	}{
@@ -35,9 +35,9 @@ func TestResourceDataGet(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "foo",
 						New:         "bar",
 						NewComputed: true,
@@ -62,9 +62,9 @@ func TestResourceDataGet(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "",
 						New:         "foo",
 						RequiresNew: true,
@@ -90,9 +90,9 @@ func TestResourceDataGet(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:      "",
 						New:      "foo!",
 						NewExtra: "foo",
@@ -115,7 +115,7 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"availability_zone": "bar",
 				},
@@ -139,15 +139,15 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"availability_zone": "foo",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "foo",
 						New:         "bar",
 						NewComputed: true,
@@ -170,7 +170,7 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"port": "80",
 				},
@@ -193,7 +193,7 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#": "3",
 					"ports.0": "1",
@@ -217,7 +217,7 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#": "3",
 					"ports.0": "1",
@@ -258,7 +258,7 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#": "3",
 					"ports.0": "1",
@@ -291,13 +291,13 @@ func TestResourceDataGet(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ingress.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ingress.#": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "1",
 					},
-					"ingress.0.from": &opentf.ResourceAttrDiff{
+					"ingress.0.from": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "8080",
 					},
@@ -330,13 +330,13 @@ func TestResourceDataGet(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ingress.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ingress.#": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "1",
 					},
-					"ingress.0.from": &opentf.ResourceAttrDiff{
+					"ingress.0.from": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "8080",
 					},
@@ -361,7 +361,7 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"availability_zone": "foo",
 				},
@@ -385,9 +385,9 @@ func TestResourceDataGet(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "",
 						New:         "foo",
 						RequiresNew: true,
@@ -417,17 +417,17 @@ func TestResourceDataGet(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"config_vars.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"config_vars.#": &tofu.ResourceAttrDiff{
 						Old: "0",
 						New: "2",
 					},
-					"config_vars.0.foo": &opentf.ResourceAttrDiff{
+					"config_vars.0.foo": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "bar",
 					},
-					"config_vars.1.bar": &opentf.ResourceAttrDiff{
+					"config_vars.1.bar": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "baz",
 					},
@@ -459,7 +459,7 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"config_vars.#":     "2",
 					"config_vars.0.foo": "baz",
@@ -494,20 +494,20 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"config_vars.#":     "1",
 					"config_vars.0.FOO": "bar",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"config_vars.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"config_vars.#": &tofu.ResourceAttrDiff{
 						Old: "1",
 						New: "0",
 					},
-					"config_vars.0.FOO": &opentf.ResourceAttrDiff{
+					"config_vars.0.FOO": &tofu.ResourceAttrDiff{
 						Old:        "bar",
 						NewRemoved: true,
 					},
@@ -533,7 +533,7 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":  "1",
 					"ports.80": "80",
@@ -573,7 +573,7 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"data.#":        "1",
 					"data.10.index": "10",
@@ -581,9 +581,9 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"data.10.value": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"data.10.value": &tofu.ResourceAttrDiff{
 						Old: "50",
 						New: "80",
 					},
@@ -652,7 +652,7 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ratio": "0.5",
 				},
@@ -675,15 +675,15 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ratio": "-0.5",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ratio": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ratio": &tofu.ResourceAttrDiff{
 						Old: "-0.5",
 						New: "33.0",
 					},
@@ -709,24 +709,24 @@ func TestResourceDataGet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":  "1",
 					"ports.80": "80",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ports.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ports.#": &tofu.ResourceAttrDiff{
 						Old: "2",
 						New: "1",
 					},
-					"ports.80": &opentf.ResourceAttrDiff{
+					"ports.80": &tofu.ResourceAttrDiff{
 						Old: "80",
 						New: "80",
 					},
-					"ports.8080": &opentf.ResourceAttrDiff{
+					"ports.8080": &tofu.ResourceAttrDiff{
 						Old:        "8080",
 						New:        "0",
 						NewRemoved: true,
@@ -760,8 +760,8 @@ func TestResourceDataGet(t *testing.T) {
 func TestResourceDataGetChange(t *testing.T) {
 	cases := []struct {
 		Schema   map[string]*Schema
-		State    *opentf.InstanceState
-		Diff     *opentf.InstanceDiff
+		State    *tofu.InstanceState
+		Diff     *tofu.InstanceDiff
 		Key      string
 		OldValue interface{}
 		NewValue interface{}
@@ -778,9 +778,9 @@ func TestResourceDataGetChange(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "",
 						New:         "foo",
 						RequiresNew: true,
@@ -804,15 +804,15 @@ func TestResourceDataGetChange(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"availability_zone": "foo",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "",
 						New:         "foo",
 						RequiresNew: true,
@@ -846,8 +846,8 @@ func TestResourceDataGetChange(t *testing.T) {
 func TestResourceDataGetOk(t *testing.T) {
 	cases := []struct {
 		Schema map[string]*Schema
-		State  *opentf.InstanceState
-		Diff   *opentf.InstanceDiff
+		State  *tofu.InstanceState
+		Diff   *tofu.InstanceDiff
 		Key    string
 		Value  interface{}
 		Ok     bool
@@ -867,9 +867,9 @@ func TestResourceDataGetOk(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "",
 					},
@@ -893,9 +893,9 @@ func TestResourceDataGetOk(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "",
 						New:         "",
 						NewComputed: true,
@@ -1024,9 +1024,9 @@ func TestResourceDataGetOk(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ports.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ports.#": &tofu.ResourceAttrDiff{
 						Old: "0",
 						New: "0",
 					},
@@ -1038,7 +1038,7 @@ func TestResourceDataGetOk(t *testing.T) {
 			Ok:    false,
 		},
 
-		// Further illustrates and clarifiies the GetOk semantics from #933, and
+		// Further illustrates and clarifies the GetOk semantics from #933, and
 		// highlights the limitation that zero-value config is currently
 		// indistinguishable from unset config.
 		{
@@ -1051,9 +1051,9 @@ func TestResourceDataGetOk(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"from_port": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"from_port": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "0",
 					},
@@ -1090,8 +1090,8 @@ func TestResourceDataGetOkExists(t *testing.T) {
 	cases := []struct {
 		Name   string
 		Schema map[string]*Schema
-		State  *opentf.InstanceState
-		Diff   *opentf.InstanceDiff
+		State  *tofu.InstanceState
+		Diff   *tofu.InstanceDiff
 		Key    string
 		Value  interface{}
 		Ok     bool
@@ -1112,8 +1112,8 @@ func TestResourceDataGetOkExists(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
 					"availability_zone": {
 						Old: "",
 						New: "",
@@ -1139,8 +1139,8 @@ func TestResourceDataGetOkExists(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
 					"availability_zone": {
 						Old:         "",
 						New:         "",
@@ -1275,8 +1275,8 @@ func TestResourceDataGetOkExists(t *testing.T) {
 			},
 
 			State: nil,
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
 					"availability_zone": {
 						Old: "",
 						New: "",
@@ -1302,8 +1302,8 @@ func TestResourceDataGetOkExists(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
 					"availability_zone": {
 						New: "true",
 					},
@@ -1418,8 +1418,8 @@ func TestResourceDataTimeout(t *testing.T) {
 func TestResourceDataHasChange(t *testing.T) {
 	cases := []struct {
 		Schema map[string]*Schema
-		State  *opentf.InstanceState
-		Diff   *opentf.InstanceDiff
+		State  *tofu.InstanceState
+		Diff   *tofu.InstanceDiff
 		Key    string
 		Change bool
 	}{
@@ -1435,9 +1435,9 @@ func TestResourceDataHasChange(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "",
 						New:         "foo",
 						RequiresNew: true,
@@ -1460,15 +1460,15 @@ func TestResourceDataHasChange(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"availability_zone": "foo",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "",
 						New:         "foo",
 						RequiresNew: true,
@@ -1492,9 +1492,9 @@ func TestResourceDataHasChange(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"tags.Name": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"tags.Name": &tofu.ResourceAttrDiff{
 						Old: "foo",
 						New: "foo",
 					},
@@ -1516,16 +1516,16 @@ func TestResourceDataHasChange(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":  "1",
 					"ports.80": "80",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ports.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ports.#": &tofu.ResourceAttrDiff{
 						Old: "1",
 						New: "0",
 					},
@@ -1548,16 +1548,16 @@ func TestResourceDataHasChange(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":  "1",
 					"ports.80": "80",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"tags.foo": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"tags.foo": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "bar",
 					},
@@ -1587,9 +1587,10 @@ func TestResourceDataSet(t *testing.T) {
 	var testNilPtr *string
 
 	cases := []struct {
+		TestName string
 		Schema   map[string]*Schema
-		State    *opentf.InstanceState
-		Diff     *opentf.InstanceDiff
+		State    *tofu.InstanceState
+		Diff     *tofu.InstanceDiff
 		Key      string
 		Value    interface{}
 		Err      bool
@@ -1600,8 +1601,8 @@ func TestResourceDataSet(t *testing.T) {
 		// compared to GetValue
 		GetPreProcess func(interface{}) interface{}
 	}{
-		// #0: Basic good
 		{
+			TestName: "Basic good",
 			Schema: map[string]*Schema{
 				"availability_zone": &Schema{
 					Type:     TypeString,
@@ -1621,9 +1622,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "availability_zone",
 			GetValue: "foo",
 		},
-
-		// #1: Basic int
 		{
+			TestName: "Basic int",
 			Schema: map[string]*Schema{
 				"port": &Schema{
 					Type:     TypeInt,
@@ -1643,9 +1643,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "port",
 			GetValue: 80,
 		},
-
-		// #2: Basic bool
 		{
+			TestName: "Basic bool, true",
 			Schema: map[string]*Schema{
 				"vpc": &Schema{
 					Type:     TypeBool,
@@ -1663,9 +1662,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "vpc",
 			GetValue: true,
 		},
-
-		// #3
 		{
+			TestName: "Basic bool, false",
 			Schema: map[string]*Schema{
 				"vpc": &Schema{
 					Type:     TypeBool,
@@ -1683,9 +1681,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "vpc",
 			GetValue: false,
 		},
-
-		// #4: Invalid type
 		{
+			TestName: "Invalid type",
 			Schema: map[string]*Schema{
 				"availability_zone": &Schema{
 					Type:     TypeString,
@@ -1706,9 +1703,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "availability_zone",
 			GetValue: "",
 		},
-
-		// #5: List of primitives, set list
 		{
+			TestName: "List of primitives, set list",
 			Schema: map[string]*Schema{
 				"ports": &Schema{
 					Type:     TypeList,
@@ -1727,9 +1723,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "ports",
 			GetValue: []interface{}{1, 2, 5},
 		},
-
-		// #6: List of primitives, set list with error
 		{
+			TestName: "List of primitives, set list with error",
 			Schema: map[string]*Schema{
 				"ports": &Schema{
 					Type:     TypeList,
@@ -1749,9 +1744,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "ports",
 			GetValue: []interface{}{},
 		},
-
-		// #7: Set a list of maps
 		{
+			TestName: "Set a list of maps",
 			Schema: map[string]*Schema{
 				"config_vars": &Schema{
 					Type:     TypeList,
@@ -1788,9 +1782,8 @@ func TestResourceDataSet(t *testing.T) {
 				},
 			},
 		},
-
-		// #8: Set, with list
 		{
+			TestName: "Set, with list",
 			Schema: map[string]*Schema{
 				"ports": &Schema{
 					Type:     TypeSet,
@@ -1803,7 +1796,7 @@ func TestResourceDataSet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#": "3",
 					"ports.0": "100",
@@ -1818,9 +1811,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "ports",
 			GetValue: []interface{}{100, 125},
 		},
-
-		// #9: Set, with Set
 		{
+			TestName: " Set, with Set",
 			Schema: map[string]*Schema{
 				"ports": &Schema{
 					Type:     TypeSet,
@@ -1833,7 +1825,7 @@ func TestResourceDataSet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":   "3",
 					"ports.100": "100",
@@ -1853,9 +1845,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "ports",
 			GetValue: []interface{}{1, 2},
 		},
-
-		// #10: Set single item
 		{
+			TestName: "Set single item",
 			Schema: map[string]*Schema{
 				"ports": &Schema{
 					Type:     TypeSet,
@@ -1868,7 +1859,7 @@ func TestResourceDataSet(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":   "2",
 					"ports.100": "100",
@@ -1883,9 +1874,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "ports",
 			GetValue: []interface{}{100, 80},
 		},
-
-		// #11: Set with nested set
 		{
+			TestName: "Set with nested set",
 			Schema: map[string]*Schema{
 				"ports": &Schema{
 					Type: TypeSet,
@@ -1951,9 +1941,8 @@ func TestResourceDataSet(t *testing.T) {
 				return v
 			},
 		},
-
-		// #12: List of floats, set list
 		{
+			TestName: "List of floats, set list",
 			Schema: map[string]*Schema{
 				"ratios": &Schema{
 					Type:     TypeList,
@@ -1972,16 +1961,20 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "ratios",
 			GetValue: []interface{}{1.0, 2.2, 5.5},
 		},
-
-		// #12: Set of floats, set list
 		{
+			TestName: "Set of floats, set list",
 			Schema: map[string]*Schema{
 				"ratios": &Schema{
 					Type:     TypeSet,
 					Computed: true,
 					Elem:     &Schema{Type: TypeFloat},
 					Set: func(a interface{}) int {
-						return int(math.Float64bits(a.(float64)))
+						// Because we want to be safe on a 32-bit and 64-bit system,
+						// we can just set a "scale factor" here that's always larger than the number of
+						// decimal places we expect to see., and then multiply by that to cast to int
+						// otherwise we could get clashes in unique ids
+						scaleFactor := 100000
+						return int(a.(float64) * float64(scaleFactor))
 					},
 				},
 			},
@@ -1996,9 +1989,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "ratios",
 			GetValue: []interface{}{1.0, 2.2, 5.5},
 		},
-
-		// #13: Basic pointer
 		{
+			TestName: "Basic pointer",
 			Schema: map[string]*Schema{
 				"availability_zone": &Schema{
 					Type:     TypeString,
@@ -2018,9 +2010,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "availability_zone",
 			GetValue: "foo",
 		},
-
-		// #14: Basic nil value
 		{
+			TestName: "Basic nil value",
 			Schema: map[string]*Schema{
 				"availability_zone": &Schema{
 					Type:     TypeString,
@@ -2040,9 +2031,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "availability_zone",
 			GetValue: "",
 		},
-
-		// #15: Basic nil pointer
 		{
+			TestName: "Basic nil pointer",
 			Schema: map[string]*Schema{
 				"availability_zone": &Schema{
 					Type:     TypeString,
@@ -2062,9 +2052,8 @@ func TestResourceDataSet(t *testing.T) {
 			GetKey:   "availability_zone",
 			GetValue: "",
 		},
-
-		// #16: Set in a list
 		{
+			TestName: "Set in a list",
 			Schema: map[string]*Schema{
 				"ports": &Schema{
 					Type: TypeList,
@@ -2127,44 +2116,44 @@ func TestResourceDataSet(t *testing.T) {
 		},
 	}
 
-	oldEnv := os.Getenv(PanicOnErr)
-	os.Setenv(PanicOnErr, "")
-	defer os.Setenv(PanicOnErr, oldEnv)
+	t.Setenv(PanicOnErr, "")
 
-	for i, tc := range cases {
-		d, err := schemaMap(tc.Schema).Data(tc.State, tc.Diff)
-		if err != nil {
-			t.Fatalf("err: %s", err)
-		}
+	for _, tc := range cases {
+		t.Run(tc.TestName, func(t *testing.T) {
+			d, err := schemaMap(tc.Schema).Data(tc.State, tc.Diff)
+			if err != nil {
+				t.Fatalf("err: %s", err)
+			}
 
-		err = d.Set(tc.Key, tc.Value)
-		if err != nil != tc.Err {
-			t.Fatalf("%d err: %s", i, err)
-		}
+			err = d.Set(tc.Key, tc.Value)
+			if err != nil != tc.Err {
+				t.Fatalf("unexpected err: %s", err)
+			}
 
-		v := d.Get(tc.GetKey)
-		if s, ok := v.(*Set); ok {
-			v = s.List()
-		}
+			v := d.Get(tc.GetKey)
+			if s, ok := v.(*Set); ok {
+				v = s.List()
+			}
 
-		if tc.GetPreProcess != nil {
-			v = tc.GetPreProcess(v)
-		}
+			if tc.GetPreProcess != nil {
+				v = tc.GetPreProcess(v)
+			}
 
-		if !reflect.DeepEqual(v, tc.GetValue) {
-			t.Fatalf("Get Bad: %d\n\n%#v", i, v)
-		}
+			if !reflect.DeepEqual(v, tc.GetValue) {
+				t.Fatalf("Got unexpected value\nactual: %#v\nexpected:%#v", v, tc.GetValue)
+			}
+		})
 	}
 }
 
 func TestResourceDataState_dynamicAttributes(t *testing.T) {
 	cases := []struct {
 		Schema    map[string]*Schema
-		State     *opentf.InstanceState
-		Diff      *opentf.InstanceDiff
+		State     *tofu.InstanceState
+		Diff      *tofu.InstanceDiff
 		Set       map[string]interface{}
 		UnsafeSet map[string]string
-		Result    *opentf.InstanceState
+		Result    *tofu.InstanceState
 	}{
 		{
 			Schema: map[string]*Schema{
@@ -2192,7 +2181,7 @@ func TestResourceDataState_dynamicAttributes(t *testing.T) {
 				"test2": "value",
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"schema_field": "present",
 					"test1":        "value",
@@ -2240,10 +2229,10 @@ func TestResourceDataState_dynamicAttributes(t *testing.T) {
 func TestResourceDataState_schema(t *testing.T) {
 	cases := []struct {
 		Schema  map[string]*Schema
-		State   *opentf.InstanceState
-		Diff    *opentf.InstanceDiff
+		State   *tofu.InstanceState
+		Diff    *tofu.InstanceDiff
 		Set     map[string]interface{}
-		Result  *opentf.InstanceState
+		Result  *tofu.InstanceState
 		Partial []string
 	}{
 		// #0 Basic primitive in diff
@@ -2259,9 +2248,9 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "",
 						New:         "foo",
 						RequiresNew: true,
@@ -2269,7 +2258,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"availability_zone": "foo",
 				},
@@ -2289,9 +2278,9 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "",
 						New:         "foo",
 						RequiresNew: true,
@@ -2303,7 +2292,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				"availability_zone": "bar",
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"availability_zone": "bar",
 				},
@@ -2327,7 +2316,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				"vpc": true,
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"vpc": "true",
 				},
@@ -2347,9 +2336,9 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:      "",
 						New:      "foo",
 						NewExtra: "foo!",
@@ -2357,7 +2346,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"availability_zone": "foo",
 				},
@@ -2374,27 +2363,27 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#": "1",
 					"ports.0": "80",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ports.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ports.#": &tofu.ResourceAttrDiff{
 						Old: "1",
 						New: "2",
 					},
-					"ports.1": &opentf.ResourceAttrDiff{
+					"ports.1": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "100",
 					},
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#": "2",
 					"ports.0": "80",
@@ -2420,31 +2409,31 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ingress.#":      "1",
 					"ingress.0.from": "80",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ingress.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ingress.#": &tofu.ResourceAttrDiff{
 						Old: "1",
 						New: "2",
 					},
-					"ingress.0.from": &opentf.ResourceAttrDiff{
+					"ingress.0.from": &tofu.ResourceAttrDiff{
 						Old: "80",
 						New: "150",
 					},
-					"ingress.1.from": &opentf.ResourceAttrDiff{
+					"ingress.1.from": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "100",
 					},
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ingress.#":      "2",
 					"ingress.0.from": "150",
@@ -2466,7 +2455,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"config_vars.#":     "2",
 					"config_vars.0.%":   "2",
@@ -2477,9 +2466,9 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"config_vars.0.bar": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"config_vars.0.bar": &tofu.ResourceAttrDiff{
 						NewRemoved: true,
 					},
 				},
@@ -2496,7 +2485,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"config_vars.#":     "2",
 					"config_vars.0.%":   "1",
@@ -2520,27 +2509,27 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"config_vars.#":     "1",
 					"config_vars.0.FOO": "bar",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"config_vars.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"config_vars.#": &tofu.ResourceAttrDiff{
 						Old: "1",
 						New: "0",
 					},
-					"config_vars.0.FOO": &opentf.ResourceAttrDiff{
+					"config_vars.0.FOO": &tofu.ResourceAttrDiff{
 						Old:        "bar",
 						NewRemoved: true,
 					},
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"config_vars.#": "0",
 				},
@@ -2558,16 +2547,16 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				ID: "bar",
 				Attributes: map[string]string{
 					"id": "bar",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "",
 						New:         "foo",
 						RequiresNew: true,
@@ -2575,7 +2564,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				ID: "bar",
 				Attributes: map[string]string{
 					"id":                "bar",
@@ -2598,7 +2587,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":   "3",
 					"ports.100": "100",
@@ -2609,7 +2598,7 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			Diff: nil,
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":   "3",
 					"ports.80":  "80",
@@ -2641,7 +2630,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				"ports": []interface{}{100, 80},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":   "2",
 					"ports.80":  "80",
@@ -2681,7 +2670,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":        "2",
 					"ports.10.order": "10",
@@ -2706,7 +2695,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":        "2",
 					"ports.10.order": "10",
@@ -2738,9 +2727,9 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"availability_zone": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"availability_zone": &tofu.ResourceAttrDiff{
 						Old:         "",
 						New:         "foo",
 						RequiresNew: true,
@@ -2750,7 +2739,7 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			Partial: []string{},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{},
 			},
 		},
@@ -2765,20 +2754,20 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#": "1",
 					"ports.0": "80",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ports.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ports.#": &tofu.ResourceAttrDiff{
 						Old: "1",
 						New: "2",
 					},
-					"ports.1": &opentf.ResourceAttrDiff{
+					"ports.1": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "100",
 					},
@@ -2787,7 +2776,7 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			Partial: []string{},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#": "1",
 					"ports.0": "80",
@@ -2808,9 +2797,9 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ports.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ports.#": &tofu.ResourceAttrDiff{
 						Old:         "",
 						NewComputed: true,
 					},
@@ -2823,7 +2812,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				"ports": []interface{}{},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{},
 			},
 		},
@@ -2845,24 +2834,24 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ingress.#":      "1",
 					"ingress.0.from": "80",
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ingress.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ingress.#": &tofu.ResourceAttrDiff{
 						Old: "1",
 						New: "2",
 					},
-					"ingress.0.from": &opentf.ResourceAttrDiff{
+					"ingress.0.from": &tofu.ResourceAttrDiff{
 						Old: "80",
 						New: "150",
 					},
-					"ingress.1.from": &opentf.ResourceAttrDiff{
+					"ingress.1.from": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "100",
 					},
@@ -2871,7 +2860,7 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			Partial: []string{},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ingress.#":      "1",
 					"ingress.0.from": "80",
@@ -2892,7 +2881,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"config_vars.#":     "2",
 					"config_vars.0.foo": "bar",
@@ -2901,9 +2890,9 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"config_vars.0.bar": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"config_vars.0.bar": &tofu.ResourceAttrDiff{
 						NewRemoved: true,
 					},
 				},
@@ -2922,7 +2911,7 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			Partial: []string{},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					// TODO: broken, shouldn't bar be removed?
 					"config_vars.#":     "2",
@@ -2949,7 +2938,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":   "3",
 					"ports.100": "100",
@@ -2958,9 +2947,9 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ports.120": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ports.120": &tofu.ResourceAttrDiff{
 						New: "120",
 					},
 				},
@@ -2968,7 +2957,7 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			Partial: []string{},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":   "3",
 					"ports.80":  "80",
@@ -2994,9 +2983,9 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ports.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ports.#": &tofu.ResourceAttrDiff{
 						Old:         "",
 						NewComputed: true,
 					},
@@ -3005,7 +2994,7 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			Partial: []string{},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{},
 			},
 		},
@@ -3022,16 +3011,16 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"tags.Name": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"tags.Name": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "foo",
 					},
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"tags.%":    "1",
 					"tags.Name": "foo",
@@ -3051,9 +3040,9 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"tags.Name": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"tags.Name": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "foo",
 					},
@@ -3064,7 +3053,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				"tags": map[string]string{},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"tags.%": "0",
 				},
@@ -3083,15 +3072,15 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"foo": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"foo": &tofu.ResourceAttrDiff{
 						NewComputed: true,
 					},
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{},
 			},
 		},
@@ -3108,9 +3097,9 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"foo": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"foo": &tofu.ResourceAttrDiff{
 						NewComputed: true,
 					},
 				},
@@ -3120,7 +3109,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				"foo": "bar",
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"foo": "bar",
 				},
@@ -3149,9 +3138,9 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ports.10.uuids.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ports.10.uuids.#": &tofu.ResourceAttrDiff{
 						NewComputed: true,
 					},
 				},
@@ -3168,7 +3157,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":           "1",
 					"ports.10.index":    "10",
@@ -3192,7 +3181,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			State: &opentf.InstanceState{
+			State: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":   "3",
 					"ports.100": "100",
@@ -3201,16 +3190,16 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ports.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ports.#": &tofu.ResourceAttrDiff{
 						Old: "3",
 						New: "0",
 					},
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#": "0",
 				},
@@ -3239,7 +3228,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				"ports": []interface{}{},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#": "0",
 				},
@@ -3265,7 +3254,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				"ports": []interface{}{},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#": "0",
 				},
@@ -3290,9 +3279,9 @@ func TestResourceDataState_schema(t *testing.T) {
 
 			State: nil,
 
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"ports.#": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"ports.#": &tofu.ResourceAttrDiff{
 						NewComputed: true,
 					},
 				},
@@ -3309,7 +3298,7 @@ func TestResourceDataState_schema(t *testing.T) {
 				},
 			},
 
-			Result: &opentf.InstanceState{
+			Result: &tofu.InstanceState{
 				Attributes: map[string]string{
 					"ports.#":          "1",
 					"ports.0.index":    "10",
@@ -3364,7 +3353,7 @@ func TestResourceDataState_schema(t *testing.T) {
 func TestResourceData_nonStringValuesInMap(t *testing.T) {
 	cases := []struct {
 		Schema       map[string]*Schema
-		Diff         *opentf.InstanceDiff
+		Diff         *tofu.InstanceDiff
 		MapFieldName string
 		ItemName     string
 		ExpectedType string
@@ -3377,13 +3366,13 @@ func TestResourceData_nonStringValuesInMap(t *testing.T) {
 					Optional: true,
 				},
 			},
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"boolMap.%": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"boolMap.%": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "1",
 					},
-					"boolMap.boolField": &opentf.ResourceAttrDiff{
+					"boolMap.boolField": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "true",
 					},
@@ -3401,13 +3390,13 @@ func TestResourceData_nonStringValuesInMap(t *testing.T) {
 					Optional: true,
 				},
 			},
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"intMap.%": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"intMap.%": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "1",
 					},
-					"intMap.intField": &opentf.ResourceAttrDiff{
+					"intMap.intField": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "8",
 					},
@@ -3425,13 +3414,13 @@ func TestResourceData_nonStringValuesInMap(t *testing.T) {
 					Optional: true,
 				},
 			},
-			Diff: &opentf.InstanceDiff{
-				Attributes: map[string]*opentf.ResourceAttrDiff{
-					"floatMap.%": &opentf.ResourceAttrDiff{
+			Diff: &tofu.InstanceDiff{
+				Attributes: map[string]*tofu.ResourceAttrDiff{
+					"floatMap.%": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "1",
 					},
-					"floatMap.floatField": &opentf.ResourceAttrDiff{
+					"floatMap.floatField": &tofu.ResourceAttrDiff{
 						Old: "",
 						New: "8.22",
 					},
@@ -3503,7 +3492,7 @@ func TestResourceDataSetMeta_Timeouts(t *testing.T) {
 
 func TestResourceDataSetId(t *testing.T) {
 	d := &ResourceData{
-		state: &opentf.InstanceState{
+		state: &tofu.InstanceState{
 			ID: "test",
 			Attributes: map[string]string{
 				"id": "test",
@@ -3529,7 +3518,7 @@ func TestResourceDataSetId(t *testing.T) {
 
 func TestResourceDataSetId_clear(t *testing.T) {
 	d := &ResourceData{
-		state: &opentf.InstanceState{ID: "bar"},
+		state: &tofu.InstanceState{ID: "bar"},
 	}
 	d.SetId("")
 
@@ -3541,7 +3530,7 @@ func TestResourceDataSetId_clear(t *testing.T) {
 
 func TestResourceDataSetId_override(t *testing.T) {
 	d := &ResourceData{
-		state: &opentf.InstanceState{ID: "bar"},
+		state: &tofu.InstanceState{ID: "bar"},
 	}
 	d.SetId("foo")
 

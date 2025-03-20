@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package plugin
@@ -10,10 +12,10 @@ import (
 	"sync"
 
 	plugin "github.com/hashicorp/go-plugin"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plugin/convert"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/provisioners"
-	proto "github.com/placeholderplaceholderplaceholder/opentf/internal/tfplugin5"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/plugin/convert"
+	"github.com/opentofu/opentofu/internal/provisioners"
+	proto "github.com/opentofu/opentofu/internal/tfplugin5"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/msgpack"
 	"google.golang.org/grpc"
@@ -46,8 +48,8 @@ type GRPCProvisioner struct {
 	client proto.ProvisionerClient
 	ctx    context.Context
 
+	mu sync.Mutex
 	// Cache the schema since we need it for serialization in each method call.
-	mu     sync.Mutex
 	schema *configschema.Block
 }
 

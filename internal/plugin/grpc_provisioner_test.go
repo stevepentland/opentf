@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package plugin
@@ -7,15 +9,15 @@ import (
 	"io"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/hcl2shim"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/provisioners"
-	proto "github.com/placeholderplaceholderplaceholder/opentf/internal/tfplugin5"
+	"github.com/opentofu/opentofu/internal/configs/hcl2shim"
+	"github.com/opentofu/opentofu/internal/provisioners"
+	proto "github.com/opentofu/opentofu/internal/tfplugin5"
 	"github.com/zclconf/go-cty/cty"
+	"go.uber.org/mock/gomock"
 
-	mockproto "github.com/placeholderplaceholderplaceholder/opentf/internal/plugin/mock_proto"
+	mockproto "github.com/opentofu/opentofu/internal/plugin/mock_proto"
 )
 
 var _ provisioners.Interface = (*GRPCProvisioner)(nil)

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package cliconfig
@@ -10,9 +12,9 @@ import (
 	"github.com/hashicorp/hcl"
 	hclast "github.com/hashicorp/hcl/hcl/ast"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/getproviders"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/getproviders"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 // ProviderInstallation is the structure of the "provider_installation"
@@ -31,7 +33,7 @@ type ProviderInstallation struct {
 	// This is _not_ intended for "production" use because it bypasses the
 	// usual version selection and checksum verification mechanisms for
 	// the providers in question. To make that intent/effect clearer, some
-	// OpenTF commands emit warnings when overrides are present. Local
+	// OpenTofu commands emit warnings when overrides are present. Local
 	// mirror directories are a better way to distribute "released"
 	// providers, because they are still subject to version constraints and
 	// checksum verification.
@@ -60,7 +62,7 @@ func decodeProviderInstallationFromConfig(hclFile *hclast.File) ([]*ProviderInst
 
 	// This is a rather odd hybrid: it's a HCL 2-like decode implemented using
 	// the HCL 1 AST API. That makes it a bit awkward in places, but it allows
-	// us to mimick the strictness of HCL 2 (making a later migration easier)
+	// us to mimic the strictness of HCL 2 (making a later migration easier)
 	// and to support a block structure that the HCL 1 decoder can't represent.
 	for _, block := range root.Items {
 		if block.Keys[0].Token.Value() != "provider_installation" {
@@ -258,7 +260,7 @@ func decodeProviderInstallationFromConfig(hclFile *hclast.File) ([]*ProviderInst
 					devOverrides[addr] = getproviders.PackageLocalDir(dirPath)
 				}
 
-				continue // We won't add anything to pi.Methods for this one
+				continue // We won't add anything to pi.MethodConfigs for this one
 
 			default:
 				diags = diags.Append(tfdiags.Sourceless(

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package getproviders
@@ -10,7 +12,7 @@ import (
 	svchost "github.com/hashicorp/terraform-svchost"
 	disco "github.com/hashicorp/terraform-svchost/disco"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 )
 
 // RegistrySource is a Source that knows how to find and install providers from
@@ -53,15 +55,15 @@ func (s *RegistrySource) AvailableVersions(ctx context.Context, provider addrs.P
 
 	// We ignore protocols here because our goal is to find out which versions
 	// are available _at all_. Which ones are compatible with the current
-	// Terraform becomes relevant only once we've selected one, at which point
+	// OpenTofu becomes relevant only once we've selected one, at which point
 	// we'll return an error if the selected one is incompatible.
 	//
 	// We intentionally produce an error on incompatibility, rather than
 	// silently ignoring an incompatible version, in order to give the user
 	// explicit feedback about why their selection wasn't valid and allow them
 	// to decide whether to fix that by changing the selection or by some other
-	// action such as upgrading Terraform, using a different OS to run
-	// Terraform, etc. Changes that affect compatibility are considered breaking
+	// action such as upgrading OpenTofu, using a different OS to run
+	// OpenTofu, etc. Changes that affect compatibility are considered breaking
 	// changes from a provider API standpoint, so provider teams should change
 	// compatibility only in new major versions.
 	ret := make(VersionList, 0, len(versionsResponse))
@@ -70,7 +72,7 @@ func (s *RegistrySource) AvailableVersions(ctx context.Context, provider addrs.P
 		if err != nil {
 			return nil, nil, ErrQueryFailed{
 				Provider: provider,
-				Wrapped:  fmt.Errorf("registry response includes invalid version string %q: %s", str, err),
+				Wrapped:  fmt.Errorf("registry response includes invalid version string %q: %w", str, err),
 			}
 		}
 		ret = append(ret, v)
@@ -142,7 +144,7 @@ func (s *RegistrySource) registryClient(hostname svchost.Hostname) (*registryCli
 		// This indicates that a credentials helper failed, which means we
 		// can't do anything better than just pass through the helper's
 		// own error message.
-		return nil, fmt.Errorf("failed to retrieve credentials for %s: %s", hostname, err)
+		return nil, fmt.Errorf("failed to retrieve credentials for %s: %w", hostname, err)
 	}
 
 	return newRegistryClient(url, creds), nil

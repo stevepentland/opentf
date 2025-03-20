@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package remote
@@ -12,10 +14,10 @@ import (
 
 	tfe "github.com/hashicorp/go-tfe"
 	version "github.com/hashicorp/go-version"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 func (b *Remote) opApply(stopCtx, cancelCtx context.Context, op *backend.Operation, w *tfe.Workspace) (*tfe.Run, error) {
@@ -72,7 +74,7 @@ func (b *Remote) opApply(stopCtx, cancelCtx context.Context, op *backend.Operati
 					"Currently the only to way to pass variables to the remote backend is by "+
 					"creating a '*.auto.tfvars' variables file. This file will automatically "+
 					"be loaded by the \"remote\" backend when the workspace is configured to use "+
-					"OpenTF v0.10.0 or later.\n\nAdditionally you can also set variables on "+
+					"OpenTofu v0.10.0 or later.\n\nAdditionally you can also set variables on "+
 					"the workspace in the web UI:\nhttps://%s/app/%s/%s/variables",
 				b.hostname, b.organization, op.Workspace,
 			),
@@ -85,7 +87,7 @@ func (b *Remote) opApply(stopCtx, cancelCtx context.Context, op *backend.Operati
 			"No configuration files found",
 			`Apply requires configuration to be present. Applying without a configuration `+
 				`would mark everything for destruction, which is normally not what is desired. `+
-				`If you would like to destroy everything, please run 'opentf destroy' which `+
+				`If you would like to destroy everything, please run 'tofu destroy' which `+
 				`does not require any configuration files.`,
 		))
 	}
@@ -159,6 +161,14 @@ func (b *Remote) opApply(stopCtx, cancelCtx context.Context, op *backend.Operati
 		}
 	}
 
+	if len(op.Excludes) != 0 {
+		diags = diags.Append(tfdiags.Sourceless(
+			tfdiags.Error,
+			"-exclude option is not supported",
+			"The -exclude option is not currently supported for remote plans.",
+		))
+	}
+
 	// Return if there are any errors.
 	if diags.HasErrors() {
 		return nil, diags.Err()
@@ -220,15 +230,15 @@ func (b *Remote) opApply(stopCtx, cancelCtx context.Context, op *backend.Operati
 
 	if !w.AutoApply {
 		if mustConfirm {
-			opts := &opentf.InputOpts{Id: "approve"}
+			opts := &tofu.InputOpts{Id: "approve"}
 
 			if op.PlanMode == plans.DestroyMode {
 				opts.Query = "\nDo you really want to destroy all resources in workspace \"" + op.Workspace + "\"?"
-				opts.Description = "OpenTF will destroy all your managed infrastructure, as shown above.\n" +
+				opts.Description = "OpenTofu will destroy all your managed infrastructure, as shown above.\n" +
 					"There is no undo. Only 'yes' will be accepted to confirm."
 			} else {
 				opts.Query = "\nDo you want to perform these actions in workspace \"" + op.Workspace + "\"?"
-				opts.Description = "OpenTF will perform the actions described above.\n" +
+				opts.Description = "OpenTofu will perform the actions described above.\n" +
 					"Only 'yes' will be accepted to approve."
 			}
 
@@ -246,7 +256,7 @@ func (b *Remote) opApply(stopCtx, cancelCtx context.Context, op *backend.Operati
 	}
 
 	// If we don't need to ask for confirmation, insert a blank
-	// line to separate the ouputs.
+	// line to separate the outputs.
 	if w.AutoApply || !mustConfirm {
 		if b.CLI != nil {
 			b.CLI.Output("")

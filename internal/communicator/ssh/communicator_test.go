@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 //go:build !race
@@ -12,7 +14,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"os"
@@ -23,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/communicator/remote"
+	"github.com/opentofu/opentofu/internal/communicator/remote"
 	"github.com/zclconf/go-cty/cty"
 	"golang.org/x/crypto/ssh"
 )
@@ -233,7 +234,7 @@ func TestKeepAlives(t *testing.T) {
 	}
 }
 
-// TestDeadConnection verifies that failed keepalive messages will eventually
+// TestFailedKeepAlives verifies that failed keepalive messages will eventually
 // kill the connection.
 func TestFailedKeepAlives(t *testing.T) {
 	ivl := keepAliveInterval
@@ -607,7 +608,7 @@ func TestAccUploadFile(t *testing.T) {
 		t.Fatalf("error uploading file: %s", err)
 	}
 
-	data, err := ioutil.ReadFile(tmpFile)
+	data, err := os.ReadFile(tmpFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -641,7 +642,7 @@ func TestAccHugeUploadFile(t *testing.T) {
 	size := int64(1 << 32)
 	source := io.LimitReader(rand.New(rand.NewSource(0)), size)
 
-	dest, err := ioutil.TempFile("", "communicator")
+	dest, err := os.CreateTemp("", "communicator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -750,7 +751,7 @@ func acceptPublicKey(keystr string) func(ssh.ConnMetadata, ssh.PublicKey) (*ssh.
 	return func(_ ssh.ConnMetadata, inkey ssh.PublicKey) (*ssh.Permissions, error) {
 		goodkey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(keystr))
 		if err != nil {
-			return nil, fmt.Errorf("error parsing key: %v", err)
+			return nil, fmt.Errorf("error parsing key: %w", err)
 		}
 
 		if bytes.Equal(inkey.Marshal(), goodkey.Marshal()) {

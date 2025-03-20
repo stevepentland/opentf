@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -18,24 +20,24 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/cloud"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/clistate"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/cloud"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/clistate"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 
-	backendInit "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/init"
-	backendLocal "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/local"
-	legacy "github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/opentf"
+	backendInit "github.com/opentofu/opentofu/internal/backend/init"
+	backendLocal "github.com/opentofu/opentofu/internal/backend/local"
+	legacy "github.com/opentofu/opentofu/internal/legacy/tofu"
 )
 
 // BackendOpts are the options used to initialize a backend.Backend.
@@ -73,8 +75,8 @@ type BackendWithRemoteTerraformVersion interface {
 
 // Backend initializes and returns the backend for this CLI session.
 //
-// The backend is used to perform the actual Terraform operations. This
-// abstraction enables easily sliding in new Terraform behavior such as
+// The backend is used to perform the actual OpenTofu operations. This
+// abstraction enables easily sliding in new OpenTofu behavior such as
 // remote state storage, remote operations, etc. while allowing the CLI
 // to remain mostly identical.
 //
@@ -88,8 +90,8 @@ type BackendWithRemoteTerraformVersion interface {
 //
 // A side-effect of this method is the population of m.backendState, recording
 // the final resolved backend configuration after dealing with overrides from
-// the "terraform init" command line, etc.
-func (m *Meta) Backend(opts *BackendOpts) (backend.Enhanced, tfdiags.Diagnostics) {
+// the "tofu init" command line, etc.
+func (m *Meta) Backend(opts *BackendOpts, enc encryption.StateEncryption) (backend.Enhanced, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 
 	// If no opts are set, then initialize
@@ -102,7 +104,7 @@ func (m *Meta) Backend(opts *BackendOpts) (backend.Enhanced, tfdiags.Diagnostics
 	var b backend.Backend
 	if !opts.ForceLocal {
 		var backendDiags tfdiags.Diagnostics
-		b, backendDiags = m.backendFromConfig(opts)
+		b, backendDiags = m.backendFromConfig(opts, enc)
 		diags = diags.Append(backendDiags)
 
 		if diags.HasErrors() {
@@ -128,16 +130,16 @@ func (m *Meta) Backend(opts *BackendOpts) (backend.Enhanced, tfdiags.Diagnostics
 				for addr, err := range errs {
 					fmt.Fprintf(&buf, "\n  - %s: %s", addr, err)
 				}
-				suggestion := "To download the plugins required for this configuration, run:\n  opentf init"
+				suggestion := "To download the plugins required for this configuration, run:\n  tofu init"
 				if m.RunningInAutomation {
-					// Don't mention "terraform init" specifically if we're running in an automation wrapper
-					suggestion = "You must install the required plugins before running OpenTF operations."
+					// Don't mention "tofu init" specifically if we're running in an automation wrapper
+					suggestion = "You must install the required plugins before running OpenTofu operations."
 				}
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
 					"Required plugins are not installed",
 					fmt.Sprintf(
-						"The installed provider plugins are not consistent with the packages selected in the dependency lock file:%s\n\nOpenTF uses external plugins to integrate with a variety of different infrastructure services. %s",
+						"The installed provider plugins are not consistent with the packages selected in the dependency lock file:%s\n\nOpenTofu uses external plugins to integrate with a variety of different infrastructure services. %s",
 						buf.String(), suggestion,
 					),
 				))
@@ -155,7 +157,7 @@ func (m *Meta) Backend(opts *BackendOpts) (backend.Enhanced, tfdiags.Diagnostics
 	if cli, ok := b.(backend.CLI); ok {
 		if err := cli.CLIInit(cliOpts); err != nil {
 			diags = diags.Append(fmt.Errorf(
-				"Error initializing backend %T: %s\n\n"+
+				"Error initializing backend %T: %w\n\n"+
 					"This is a bug; please report it to the backend developer",
 				b, err,
 			))
@@ -179,7 +181,7 @@ func (m *Meta) Backend(opts *BackendOpts) (backend.Enhanced, tfdiags.Diagnostics
 	}
 
 	// Build the local backend
-	local := backendLocal.NewWithBackend(b)
+	local := backendLocal.NewWithBackend(b, enc)
 	if err := local.CLIInit(cliOpts); err != nil {
 		// Local backend isn't allowed to fail. It would be a bug.
 		panic(err)
@@ -220,14 +222,14 @@ func (m *Meta) selectWorkspace(b backend.Backend) error {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("Failed to get existing workspaces: %s", err)
+		return fmt.Errorf("Failed to get existing workspaces: %w", err)
 	}
 	if len(workspaces) == 0 {
 		if c, ok := b.(*cloud.Cloud); ok && m.input {
 			// len is always 1 if using Name; 0 means we're using Tags and there
 			// aren't any matching workspaces. Which might be normal and fine, so
 			// let's just ask:
-			name, err := m.UIInput().Input(context.Background(), &opentf.InputOpts{
+			name, err := m.UIInput().Input(context.Background(), &tofu.InputOpts{
 				Id:          "create-workspace",
 				Query:       "\n[reset][bold][yellow]No workspaces found.[reset]",
 				Description: fmt.Sprintf(inputCloudInitCreateWorkspace, strings.Join(c.WorkspaceMapping.Tags, ", ")),
@@ -242,7 +244,7 @@ func (m *Meta) selectWorkspace(b backend.Backend) error {
 			log.Printf("[TRACE] Meta.selectWorkspace: selecting the new TFC workspace requested by the user (%s)", name)
 			return m.SetWorkspace(name)
 		} else {
-			return fmt.Errorf(strings.TrimSpace(errBackendNoExistingWorkspaces))
+			return fmt.Errorf("%s", strings.TrimSpace(errBackendNoExistingWorkspaces))
 		}
 	}
 
@@ -274,7 +276,7 @@ func (m *Meta) selectWorkspace(b backend.Backend) error {
 	}
 
 	// Otherwise, ask the user to select a workspace from the list of existing workspaces.
-	v, err := m.UIInput().Input(context.Background(), &opentf.InputOpts{
+	v, err := m.UIInput().Input(context.Background(), &tofu.InputOpts{
 		Id: "select-workspace",
 		Query: fmt.Sprintf(
 			"\n[reset][bold][yellow]The currently selected workspace (%s) does not exist.[reset]",
@@ -283,7 +285,7 @@ func (m *Meta) selectWorkspace(b backend.Backend) error {
 			strings.TrimSpace(inputBackendSelectWorkspace), list.String()),
 	})
 	if err != nil {
-		return fmt.Errorf("Failed to select workspace: %s", err)
+		return fmt.Errorf("Failed to select workspace: %w", err)
 	}
 
 	idx, err := strconv.Atoi(v)
@@ -302,7 +304,7 @@ func (m *Meta) selectWorkspace(b backend.Backend) error {
 // The current workspace name is also stored as part of the plan, and so this
 // method will check that it matches the currently-selected workspace name
 // and produce error diagnostics if not.
-func (m *Meta) BackendForLocalPlan(settings plans.Backend) (backend.Enhanced, tfdiags.Diagnostics) {
+func (m *Meta) BackendForLocalPlan(settings plans.Backend, enc encryption.StateEncryption) (backend.Enhanced, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 
 	f := backendInit.Backend(settings.Type)
@@ -310,7 +312,7 @@ func (m *Meta) BackendForLocalPlan(settings plans.Backend) (backend.Enhanced, tf
 		diags = diags.Append(fmt.Errorf(strings.TrimSpace(errBackendSavedUnknown), settings.Type))
 		return nil, diags
 	}
-	b := f()
+	b := f(enc)
 	log.Printf("[TRACE] Meta.BackendForLocalPlan: instantiated backend of type %T", b)
 
 	schema := b.ConfigSchema()
@@ -341,7 +343,7 @@ func (m *Meta) BackendForLocalPlan(settings plans.Backend) (backend.Enhanced, tf
 		}
 		if err := cli.CLIInit(cliOpts); err != nil {
 			diags = diags.Append(fmt.Errorf(
-				"Error initializing backend %T: %s\n\n"+
+				"Error initializing backend %T: %w\n\n"+
 					"This is a bug; please report it to the backend developer",
 				b, err,
 			))
@@ -369,7 +371,7 @@ func (m *Meta) BackendForLocalPlan(settings plans.Backend) (backend.Enhanced, tf
 		return nil, diags
 	}
 	cliOpts.Validation = false // don't validate here in case config contains file(...) calls where the file doesn't exist
-	local := backendLocal.NewWithBackend(b)
+	local := backendLocal.NewWithBackend(b, enc)
 	if err := local.CLIInit(cliOpts); err != nil {
 		// Local backend should never fail, so this is always a bug.
 		panic(err)
@@ -403,7 +405,7 @@ func (m *Meta) backendCLIOpts() (*backend.CLIOpts, error) {
 // This prepares the operation. After calling this, the caller is expected
 // to modify fields of the operation such as Sequence to specify what will
 // be called.
-func (m *Meta) Operation(b backend.Backend, vt arguments.ViewType) *backend.Operation {
+func (m *Meta) Operation(b backend.Backend, vt arguments.ViewType, enc encryption.Encryption) *backend.Operation {
 	schema := b.ConfigSchema()
 	workspace, err := m.Workspace()
 	if err != nil {
@@ -433,13 +435,15 @@ func (m *Meta) Operation(b backend.Backend, vt arguments.ViewType) *backend.Oper
 		// should always have been called earlier to prepare the "ContextOpts"
 		// for the backend anyway, so we should never actually get here in
 		// a real situation. If we do get here then the backend will inevitably
-		// fail downstream somwhere if it tries to use the empty depLocks.
+		// fail downstream somewhere if it tries to use the empty depLocks.
 		log.Printf("[WARN] Failed to load dependency locks while preparing backend operation (ignored): %s", diags.Err().Error())
 	}
 
 	return &backend.Operation{
+		Encryption:      enc,
 		PlanOutBackend:  planOutBackend,
 		Targets:         m.targets,
+		Excludes:        m.excludes,
 		UIIn:            m.UIInput(),
 		UIOut:           m.Ui,
 		Workspace:       workspace,
@@ -491,11 +495,15 @@ func (m *Meta) backendConfig(opts *BackendOpts) (*configs.Backend, int, tfdiags.
 		})
 		return nil, 0, diags
 	}
-	b := bf()
+	b := bf(nil) // Just using this for config/schema, don't need encryption here
 
 	configSchema := b.ConfigSchema()
 	configBody := c.Config
-	configHash := c.Hash(configSchema)
+	configHash, cfgDiags := c.Hash(configSchema)
+	diags = diags.Append(cfgDiags)
+	if diags.HasErrors() {
+		return nil, 0, diags
+	}
 
 	// If we have an override configuration body then we must apply it now.
 	if opts.ConfigOverride != nil {
@@ -524,7 +532,7 @@ func (m *Meta) backendConfig(opts *BackendOpts) (*configs.Backend, int, tfdiags.
 //
 // This function may query the user for input unless input is disabled, in
 // which case this function will error.
-func (m *Meta) backendFromConfig(opts *BackendOpts) (backend.Backend, tfdiags.Diagnostics) {
+func (m *Meta) backendFromConfig(opts *BackendOpts, enc encryption.StateEncryption) (backend.Backend, tfdiags.Diagnostics) {
 	// Get the local backend configuration.
 	c, cHash, diags := m.backendConfig(opts)
 	if diags.HasErrors() {
@@ -534,7 +542,7 @@ func (m *Meta) backendFromConfig(opts *BackendOpts) (backend.Backend, tfdiags.Di
 	// ------------------------------------------------------------------------
 	// For historical reasons, current backend configuration for a working
 	// directory is kept in a *state-like* file, using the legacy state
-	// structures in the Terraform package. It is not actually a Terraform
+	// structures in the OpenTofu package. It is not actually a OpenTofu
 	// state, and so only the "backend" portion of it is actually used.
 	//
 	// The remainder of this code often confusingly refers to this as a "state",
@@ -545,7 +553,7 @@ func (m *Meta) backendFromConfig(opts *BackendOpts) (backend.Backend, tfdiags.Di
 	// Since the "real" state has since moved on to be represented by
 	// states.State, we can recognize the special meaning of state that applies
 	// to this function and its callees by their continued use of the
-	// otherwise-obsolete terraform.State.
+	// otherwise-obsolete tofu.State.
 	// ------------------------------------------------------------------------
 
 	// Get the path to where we store a local cache of backend configuration
@@ -554,7 +562,7 @@ func (m *Meta) backendFromConfig(opts *BackendOpts) (backend.Backend, tfdiags.Di
 	statePath := filepath.Join(m.DataDir(), DefaultStateFilename)
 	sMgr := &clistate.LocalState{Path: statePath}
 	if err := sMgr.RefreshState(); err != nil {
-		diags = diags.Append(fmt.Errorf("Failed to load state: %s", err))
+		diags = diags.Append(fmt.Errorf("Failed to load state: %w", err))
 		return nil, diags
 	}
 
@@ -591,7 +599,7 @@ func (m *Meta) backendFromConfig(opts *BackendOpts) (backend.Backend, tfdiags.Di
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Legacy remote state not supported",
-			"This working directory is configured for legacy remote state, which is no longer supported from Terraform v0.12 onwards, and thus not supported by OpenTF, either. To migrate this environment, first run \"terraform init\" under a Terraform 0.11 release, and then upgrade to OpenTF.",
+			"This working directory is configured for legacy remote state, which is no longer supported from Terraform v0.12 onwards, and thus not supported by OpenTofu, either. To migrate this environment, first run \"terraform init\" under a Terraform 0.11 release, and then upgrade to OpenTofu.",
 		))
 		return nil, diags
 	}
@@ -612,7 +620,7 @@ func (m *Meta) backendFromConfig(opts *BackendOpts) (backend.Backend, tfdiags.Di
 		if !opts.Init {
 			diags = diags.Append(tfdiags.Sourceless(
 				tfdiags.Error,
-				"Backend initialization required, please run \"opentf init\"",
+				"Backend initialization required, please run \"tofu init\"",
 				fmt.Sprintf(strings.TrimSpace(errBackendInit), initReason),
 			))
 			return nil, diags
@@ -623,30 +631,30 @@ func (m *Meta) backendFromConfig(opts *BackendOpts) (backend.Backend, tfdiags.Di
 			return nil, diags
 		}
 
-		return m.backend_c_r_S(c, cHash, sMgr, true, opts)
+		return m.backend_c_r_S(c, cHash, sMgr, true, opts, enc)
 
 	// Configuring a backend for the first time or -reconfigure flag was used
 	case c != nil && s.Backend.Empty():
 		log.Printf("[TRACE] Meta.Backend: moving from default local state only to %q backend", c.Type)
 		if !opts.Init {
 			if c.Type == "cloud" {
-				initReason := "Initial configuration of Terraform Cloud"
+				initReason := "Initial configuration of cloud backend"
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
-					"Terraform Cloud initialization required: please run \"opentf init\"",
+					"Cloud backend initialization required: please run \"tofu init\"",
 					fmt.Sprintf(strings.TrimSpace(errBackendInitCloud), initReason),
 				))
 			} else {
 				initReason := fmt.Sprintf("Initial configuration of the requested backend %q", c.Type)
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
-					"Backend initialization required, please run \"opentf init\"",
+					"Backend initialization required, please run \"tofu init\"",
 					fmt.Sprintf(strings.TrimSpace(errBackendInit), initReason),
 				))
 			}
 			return nil, diags
 		}
-		return m.backend_C_r_s(c, cHash, sMgr, opts)
+		return m.backend_C_r_s(c, cHash, sMgr, opts, enc)
 	// Potentially changing a backend configuration
 	case c != nil && !s.Backend.Empty():
 		// We are not going to migrate if...
@@ -656,7 +664,7 @@ func (m *Meta) backendFromConfig(opts *BackendOpts) (backend.Backend, tfdiags.Di
 		// AND we're not providing any overrides. An override can mean a change overriding an unchanged backend block (indicated by the hash value).
 		if (uint64(cHash) == s.Backend.Hash) && (!opts.Init || opts.ConfigOverride == nil) {
 			log.Printf("[TRACE] Meta.Backend: using already-initialized, unchanged %q backend configuration", c.Type)
-			savedBackend, diags := m.savedBackend(sMgr)
+			savedBackend, diags := m.savedBackend(sMgr, enc)
 			// Verify that selected workspace exist. Otherwise prompt user to create one
 			if opts.Init && savedBackend != nil {
 				if err := m.selectWorkspace(savedBackend); err != nil {
@@ -673,7 +681,7 @@ func (m *Meta) backendFromConfig(opts *BackendOpts) (backend.Backend, tfdiags.Di
 		// don't need to migrate, we update the backend cache hash value.
 		if !m.backendConfigNeedsMigration(c, s.Backend) {
 			log.Printf("[TRACE] Meta.Backend: using already-initialized %q backend configuration", c.Type)
-			savedBackend, moreDiags := m.savedBackend(sMgr)
+			savedBackend, moreDiags := m.savedBackend(sMgr, enc)
 			diags = diags.Append(moreDiags)
 			if moreDiags.HasErrors() {
 				return nil, diags
@@ -713,7 +721,7 @@ func (m *Meta) backendFromConfig(opts *BackendOpts) (backend.Backend, tfdiags.Di
 		}
 
 		log.Printf("[WARN] backend config has changed since last init")
-		return m.backend_C_r_S_changed(c, cHash, sMgr, true, opts)
+		return m.backend_C_r_S_changed(c, cHash, sMgr, true, opts, enc)
 
 	default:
 		diags = diags.Append(fmt.Errorf(
@@ -731,11 +739,11 @@ func (m *Meta) determineInitReason(previousBackendType string, currentBackendTyp
 	initReason := ""
 	switch cloudMode {
 	case cloud.ConfigMigrationIn:
-		initReason = fmt.Sprintf("Changed from backend %q to Terraform Cloud", previousBackendType)
+		initReason = fmt.Sprintf("Changed from backend %q to cloud backend", previousBackendType)
 	case cloud.ConfigMigrationOut:
-		initReason = fmt.Sprintf("Changed from Terraform Cloud to backend %q", previousBackendType)
+		initReason = fmt.Sprintf("Changed from cloud backend to backend %q", previousBackendType)
 	case cloud.ConfigChangeInPlace:
-		initReason = "Terraform Cloud configuration block has changed"
+		initReason = "Cloud backend configuration block has changed"
 	default:
 		switch {
 		case previousBackendType != currentBackendType:
@@ -750,19 +758,19 @@ func (m *Meta) determineInitReason(previousBackendType string, currentBackendTyp
 	case cloud.ConfigChangeInPlace:
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
-			"Terraform Cloud initialization required: please run \"opentf init\"",
+			"Cloud backend initialization required: please run \"tofu init\"",
 			fmt.Sprintf(strings.TrimSpace(errBackendInitCloud), initReason),
 		))
 	case cloud.ConfigMigrationIn:
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
-			"Terraform Cloud initialization required: please run \"opentf init\"",
+			"Cloud backend initialization required: please run \"tofu init\"",
 			fmt.Sprintf(strings.TrimSpace(errBackendInitCloud), initReason),
 		))
 	default:
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
-			"Backend initialization required: please run \"opentf init\"",
+			"Backend initialization required: please run \"tofu init\"",
 			fmt.Sprintf(strings.TrimSpace(errBackendInit), initReason),
 		))
 	}
@@ -772,9 +780,9 @@ func (m *Meta) determineInitReason(previousBackendType string, currentBackendTyp
 
 // backendFromState returns the initialized (not configured) backend directly
 // from the backend state. This should be used only when a user runs
-// `terraform init -backend=false`. This function returns a local backend if
+// `tofu init -backend=false`. This function returns a local backend if
 // there is no backend state or no backend configured.
-func (m *Meta) backendFromState(ctx context.Context) (backend.Backend, tfdiags.Diagnostics) {
+func (m *Meta) backendFromState(ctx context.Context, enc encryption.StateEncryption) (backend.Backend, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 	// Get the path to where we store a local cache of backend configuration
 	// if we're using a remote backend. This may not yet exist which means
@@ -782,43 +790,43 @@ func (m *Meta) backendFromState(ctx context.Context) (backend.Backend, tfdiags.D
 	statePath := filepath.Join(m.DataDir(), DefaultStateFilename)
 	sMgr := &clistate.LocalState{Path: statePath}
 	if err := sMgr.RefreshState(); err != nil {
-		diags = diags.Append(fmt.Errorf("Failed to load state: %s", err))
+		diags = diags.Append(fmt.Errorf("Failed to load state: %w", err))
 		return nil, diags
 	}
 	s := sMgr.State()
 	if s == nil {
 		// no state, so return a local backend
 		log.Printf("[TRACE] Meta.Backend: backend has not previously been initialized in this working directory")
-		return backendLocal.New(), diags
+		return backendLocal.New(enc), diags
 	}
 	if s.Backend == nil {
 		// s.Backend is nil, so return a local backend
 		log.Printf("[TRACE] Meta.Backend: working directory was previously initialized but has no backend (is using legacy remote state?)")
-		return backendLocal.New(), diags
+		return backendLocal.New(enc), diags
 	}
 	log.Printf("[TRACE] Meta.Backend: working directory was previously initialized for %q backend", s.Backend.Type)
 
 	//backend init function
 	if s.Backend.Type == "" {
-		return backendLocal.New(), diags
+		return backendLocal.New(enc), diags
 	}
 	f := backendInit.Backend(s.Backend.Type)
 	if f == nil {
 		diags = diags.Append(fmt.Errorf(strings.TrimSpace(errBackendSavedUnknown), s.Backend.Type))
 		return nil, diags
 	}
-	b := f()
+	b := f(enc)
 
 	// The configuration saved in the working directory state file is used
 	// in this case, since it will contain any additional values that
-	// were provided via -backend-config arguments on terraform init.
+	// were provided via -backend-config arguments on tofu init.
 	schema := b.ConfigSchema()
 	configVal, err := s.Backend.Config(schema)
 	if err != nil {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Failed to decode current backend config",
-			fmt.Sprintf("The backend configuration created by the most recent run of \"opentf init\" could not be decoded: %s. The configuration may have been initialized by an earlier version that used an incompatible configuration structure. Run \"opentf init -reconfigure\" to force re-initialization of the backend.", err),
+			fmt.Sprintf("The backend configuration created by the most recent run of \"tofu init\" could not be decoded: %s. The configuration may have been initialized by an earlier version that used an incompatible configuration structure. Run \"tofu init -reconfigure\" to force re-initialization of the backend.", err),
 		))
 		return nil, diags
 	}
@@ -869,7 +877,7 @@ func (m *Meta) backendFromState(ctx context.Context) (backend.Backend, tfdiags.D
 
 // Unconfiguring a backend (moving from backend => local).
 func (m *Meta) backend_c_r_S(
-	c *configs.Backend, cHash int, sMgr *clistate.LocalState, output bool, opts *BackendOpts) (backend.Backend, tfdiags.Diagnostics) {
+	c *configs.Backend, cHash int, sMgr *clistate.LocalState, output bool, opts *BackendOpts, enc encryption.StateEncryption) (backend.Backend, tfdiags.Diagnostics) {
 
 	var diags tfdiags.Diagnostics
 
@@ -892,20 +900,20 @@ func (m *Meta) backend_c_r_S(
 	backendType := s.Backend.Type
 
 	if cloudMode == cloud.ConfigMigrationOut {
-		m.Ui.Output("Migrating from Terraform Cloud to local state.")
+		m.Ui.Output("Migrating from cloud backend to local state.")
 	} else {
 		m.Ui.Output(fmt.Sprintf(strings.TrimSpace(outputBackendMigrateLocal), s.Backend.Type))
 	}
 
 	// Grab a purely local backend to get the local state if it exists
-	localB, moreDiags := m.Backend(&BackendOpts{ForceLocal: true, Init: true})
+	localB, moreDiags := m.Backend(&BackendOpts{ForceLocal: true, Init: true}, enc)
 	diags = diags.Append(moreDiags)
 	if moreDiags.HasErrors() {
 		return nil, diags
 	}
 
 	// Initialize the configured backend
-	b, moreDiags := m.savedBackend(sMgr)
+	b, moreDiags := m.savedBackend(sMgr, enc)
 	diags = diags.Append(moreDiags)
 	if moreDiags.HasErrors() {
 		return nil, diags
@@ -946,7 +954,7 @@ func (m *Meta) backend_c_r_S(
 }
 
 // Configuring a backend for the first time.
-func (m *Meta) backend_C_r_s(c *configs.Backend, cHash int, sMgr *clistate.LocalState, opts *BackendOpts) (backend.Backend, tfdiags.Diagnostics) {
+func (m *Meta) backend_C_r_s(c *configs.Backend, cHash int, sMgr *clistate.LocalState, opts *BackendOpts, enc encryption.StateEncryption) (backend.Backend, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 
 	vt := arguments.ViewJSON
@@ -957,7 +965,7 @@ func (m *Meta) backend_C_r_s(c *configs.Backend, cHash int, sMgr *clistate.Local
 	}
 
 	// Grab a purely local backend to get the local state if it exists
-	localB, localBDiags := m.Backend(&BackendOpts{ForceLocal: true, Init: true})
+	localB, localBDiags := m.Backend(&BackendOpts{ForceLocal: true, Init: true}, enc)
 	if localBDiags.HasErrors() {
 		diags = diags.Append(localBDiags)
 		return nil, diags
@@ -997,7 +1005,7 @@ func (m *Meta) backend_C_r_s(c *configs.Backend, cHash int, sMgr *clistate.Local
 	}
 
 	// Get the backend
-	b, configVal, moreDiags := m.backendInitFromConfig(c)
+	b, configVal, moreDiags := m.backendInitFromConfig(c, enc)
 	diags = diags.Append(moreDiags)
 	if diags.HasErrors() {
 		return nil, diags
@@ -1050,8 +1058,8 @@ func (m *Meta) backend_C_r_s(c *configs.Backend, cHash int, sMgr *clistate.Local
 	if m.stateLock {
 		view := views.NewStateLocker(vt, m.View)
 		stateLocker := clistate.NewLocker(m.stateLockTimeout, view)
-		if err := stateLocker.Lock(sMgr, "backend from plan"); err != nil {
-			diags = diags.Append(fmt.Errorf("Error locking state: %s", err))
+		if d := stateLocker.Lock(sMgr, "backend from plan"); d != nil {
+			diags = diags.Append(fmt.Errorf("Error locking state: %s", d))
 			return nil, diags
 		}
 		defer stateLocker.Unlock()
@@ -1059,7 +1067,7 @@ func (m *Meta) backend_C_r_s(c *configs.Backend, cHash int, sMgr *clistate.Local
 
 	configJSON, err := ctyjson.Marshal(configVal, b.ConfigSchema().ImpliedType())
 	if err != nil {
-		diags = diags.Append(fmt.Errorf("Can't serialize backend configuration as JSON: %s", err))
+		diags = diags.Append(fmt.Errorf("Can't serialize backend configuration as JSON: %w", err))
 		return nil, diags
 	}
 
@@ -1115,7 +1123,7 @@ func (m *Meta) backend_C_r_s(c *configs.Backend, cHash int, sMgr *clistate.Local
 }
 
 // Changing a previously saved backend.
-func (m *Meta) backend_C_r_S_changed(c *configs.Backend, cHash int, sMgr *clistate.LocalState, output bool, opts *BackendOpts) (backend.Backend, tfdiags.Diagnostics) {
+func (m *Meta) backend_C_r_S_changed(c *configs.Backend, cHash int, sMgr *clistate.LocalState, output bool, opts *BackendOpts, enc encryption.StateEncryption) (backend.Backend, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 
 	vt := arguments.ViewJSON
@@ -1138,11 +1146,11 @@ func (m *Meta) backend_C_r_S_changed(c *configs.Backend, cHash int, sMgr *clista
 		// Notify the user
 		switch cloudMode {
 		case cloud.ConfigChangeInPlace:
-			m.Ui.Output("Terraform Cloud configuration has changed.")
+			m.Ui.Output("Cloud backend configuration has changed.")
 		case cloud.ConfigMigrationIn:
-			m.Ui.Output(fmt.Sprintf("Migrating from backend %q to Terraform Cloud.", s.Backend.Type))
+			m.Ui.Output(fmt.Sprintf("Migrating from backend %q to cloud backend.", s.Backend.Type))
 		case cloud.ConfigMigrationOut:
-			m.Ui.Output(fmt.Sprintf("Migrating from Terraform Cloud to backend %q.", c.Type))
+			m.Ui.Output(fmt.Sprintf("Migrating from cloud backend to backend %q.", c.Type))
 		default:
 			if s.Backend.Type != c.Type {
 				output := fmt.Sprintf(outputBackendMigrateChange, s.Backend.Type, c.Type)
@@ -1158,7 +1166,7 @@ func (m *Meta) backend_C_r_S_changed(c *configs.Backend, cHash int, sMgr *clista
 	}
 
 	// Get the backend
-	b, configVal, moreDiags := m.backendInitFromConfig(c)
+	b, configVal, moreDiags := m.backendInitFromConfig(c, enc)
 	diags = diags.Append(moreDiags)
 	if moreDiags.HasErrors() {
 		return nil, diags
@@ -1172,7 +1180,7 @@ func (m *Meta) backend_C_r_S_changed(c *configs.Backend, cHash int, sMgr *clista
 	// state lives.
 	if cloudMode != cloud.ConfigChangeInPlace {
 		// Grab the existing backend
-		oldB, oldBDiags := m.savedBackend(sMgr)
+		oldB, oldBDiags := m.savedBackend(sMgr, enc)
 		diags = diags.Append(oldBDiags)
 		if oldBDiags.HasErrors() {
 			return nil, diags
@@ -1194,8 +1202,8 @@ func (m *Meta) backend_C_r_S_changed(c *configs.Backend, cHash int, sMgr *clista
 		if m.stateLock {
 			view := views.NewStateLocker(vt, m.View)
 			stateLocker := clistate.NewLocker(m.stateLockTimeout, view)
-			if err := stateLocker.Lock(sMgr, "backend from plan"); err != nil {
-				diags = diags.Append(fmt.Errorf("Error locking state: %s", err))
+			if d := stateLocker.Lock(sMgr, "backend from plan"); d != nil {
+				diags = diags.Append(fmt.Errorf("Error locking state: %s", d))
 				return nil, diags
 			}
 			defer stateLocker.Unlock()
@@ -1204,7 +1212,7 @@ func (m *Meta) backend_C_r_S_changed(c *configs.Backend, cHash int, sMgr *clista
 
 	configJSON, err := ctyjson.Marshal(configVal, b.ConfigSchema().ImpliedType())
 	if err != nil {
-		diags = diags.Append(fmt.Errorf("Can't serialize backend configuration as JSON: %s", err))
+		diags = diags.Append(fmt.Errorf("Can't serialize backend configuration as JSON: %w", err))
 		return nil, diags
 	}
 
@@ -1253,7 +1261,7 @@ func (m *Meta) backend_C_r_S_changed(c *configs.Backend, cHash int, sMgr *clista
 // TODO: This is extremely similar to Meta.backendFromState() but for legacy reasons this is the
 // function used by the migration APIs within this file. The other handles 'init -backend=false',
 // specifically.
-func (m *Meta) savedBackend(sMgr *clistate.LocalState) (backend.Backend, tfdiags.Diagnostics) {
+func (m *Meta) savedBackend(sMgr *clistate.LocalState, enc encryption.StateEncryption) (backend.Backend, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 
 	s := sMgr.State()
@@ -1264,18 +1272,18 @@ func (m *Meta) savedBackend(sMgr *clistate.LocalState) (backend.Backend, tfdiags
 		diags = diags.Append(fmt.Errorf(strings.TrimSpace(errBackendSavedUnknown), s.Backend.Type))
 		return nil, diags
 	}
-	b := f()
+	b := f(enc)
 
 	// The configuration saved in the working directory state file is used
 	// in this case, since it will contain any additional values that
-	// were provided via -backend-config arguments on terraform init.
+	// were provided via -backend-config arguments on tofu init.
 	schema := b.ConfigSchema()
 	configVal, err := s.Backend.Config(schema)
 	if err != nil {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Failed to decode current backend config",
-			fmt.Sprintf("The backend configuration created by the most recent run of \"opentf init\" could not be decoded: %s. The configuration may have been initialized by an earlier version that used an incompatible configuration structure. Run \"opentf init -reconfigure\" to force re-initialization of the backend.", err),
+			fmt.Sprintf("The backend configuration created by the most recent run of \"tofu init\" could not be decoded: %s. The configuration may have been initialized by an earlier version that used an incompatible configuration structure. Run \"tofu init -reconfigure\" to force re-initialization of the backend.", err),
 		))
 		return nil, diags
 	}
@@ -1352,11 +1360,15 @@ func (m *Meta) backendConfigNeedsMigration(c *configs.Backend, s *legacy.Backend
 		log.Printf("[TRACE] backendConfigNeedsMigration: no backend of type %q, which migration codepath must handle", c.Type)
 		return true // let the migration codepath deal with the missing backend
 	}
-	b := f()
+	b := f(nil) // We don't need encryption here as it's only used for config/schema
 
-	schema := b.ConfigSchema()
-	decSpec := schema.NoneRequired().DecoderSpec()
-	givenVal, diags := hcldec.Decode(c.Config, decSpec, nil)
+	// We use "NoneRequired" here because we're only evaluating the body written directly
+	// in the root module configuration, and we're intentionally not including any
+	// additional arguments passed on the command line (using -backend-config), so
+	// some of the required arguments might be satisfied from outside of the body we're
+	// evaluating here.
+	schema := b.ConfigSchema().NoneRequired()
+	givenVal, diags := c.Decode(schema)
 	if diags.HasErrors() {
 		log.Printf("[TRACE] backendConfigNeedsMigration: failed to decode given config; migration codepath must handle problem: %s", diags.Error())
 		return true // let the migration codepath deal with these errors
@@ -1380,7 +1392,7 @@ func (m *Meta) backendConfigNeedsMigration(c *configs.Backend, s *legacy.Backend
 	return true
 }
 
-func (m *Meta) backendInitFromConfig(c *configs.Backend) (backend.Backend, cty.Value, tfdiags.Diagnostics) {
+func (m *Meta) backendInitFromConfig(c *configs.Backend, enc encryption.StateEncryption) (backend.Backend, cty.Value, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 
 	// Get the backend
@@ -1389,11 +1401,10 @@ func (m *Meta) backendInitFromConfig(c *configs.Backend) (backend.Backend, cty.V
 		diags = diags.Append(fmt.Errorf(strings.TrimSpace(errBackendNewUnknown), c.Type))
 		return nil, cty.NilVal, diags
 	}
-	b := f()
+	b := f(enc)
 
 	schema := b.ConfigSchema()
-	decSpec := schema.NoneRequired().DecoderSpec()
-	configVal, hclDiags := hcldec.Decode(c.Config, decSpec, nil)
+	configVal, hclDiags := c.Decode(schema.NoneRequired())
 	diags = diags.Append(hclDiags)
 	if hclDiags.HasErrors() {
 		return nil, cty.NilVal, diags
@@ -1403,7 +1414,7 @@ func (m *Meta) backendInitFromConfig(c *configs.Backend) (backend.Backend, cty.V
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Unknown values within backend definition",
-			"The `opentf` configuration block should contain only concrete and static values. Another diagnostic should contain more information about which part of the configuration is problematic."))
+			"The `tofu` configuration block should contain only concrete and static values. Another diagnostic should contain more information about which part of the configuration is problematic."))
 		return nil, cty.NilVal, diags
 	}
 
@@ -1412,7 +1423,7 @@ func (m *Meta) backendInitFromConfig(c *configs.Backend) (backend.Backend, cty.V
 		var err error
 		configVal, err = m.inputForSchema(configVal, schema)
 		if err != nil {
-			diags = diags.Append(fmt.Errorf("Error asking for input to configure backend %q: %s", c.Type, err))
+			diags = diags.Append(fmt.Errorf("Error asking for input to configure backend %q: %w", c.Type, err))
 		}
 
 		// We get an unknown here if the if the user aborted input, but we can't
@@ -1470,7 +1481,7 @@ func (m *Meta) ignoreRemoteVersionConflict(b backend.Backend) {
 	}
 }
 
-// Helper method to check the local Terraform version against the configured
+// Helper method to check the local OpenTofu version against the configured
 // version in the remote workspace, returning diagnostics if they conflict.
 func (m *Meta) remoteVersionCheck(b backend.Backend, workspace string) tfdiags.Diagnostics {
 	var diags tfdiags.Diagnostics
@@ -1500,26 +1511,26 @@ func (m *Meta) remoteVersionCheck(b backend.Backend, workspace string) tfdiags.D
 func (m *Meta) assertSupportedCloudInitOptions(mode cloud.ConfigChangeMode) tfdiags.Diagnostics {
 	var diags tfdiags.Diagnostics
 	if mode.InvolvesCloud() {
-		log.Printf("[TRACE] Meta.Backend: Terraform Cloud mode initialization type: %s", mode)
+		log.Printf("[TRACE] Meta.Backend: Cloud backend mode initialization type: %s", mode)
 		if m.reconfigure {
 			if mode.IsCloudMigration() {
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
 					"Invalid command-line option",
-					"The -reconfigure option is unsupported when migrating to Terraform Cloud, because activating Terraform Cloud involves some additional steps.",
+					"The -reconfigure option is unsupported when migrating to cloud backend, because activating cloud backend involves some additional steps.",
 				))
 			} else {
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
 					"Invalid command-line option",
-					"The -reconfigure option is for in-place reconfiguration of state backends only, and is not needed when changing Terraform Cloud settings.\n\nWhen using Terraform Cloud, initialization automatically activates any new Cloud configuration settings.",
+					"The -reconfigure option is for in-place reconfiguration of state backends only, and is not needed when changing cloud backend settings.\n\nWhen using cloud backend, initialization automatically activates any new Cloud configuration settings.",
 				))
 			}
 		}
 		if m.migrateState {
 			name := "-migrate-state"
 			if m.forceInitCopy {
-				// -force copy implies -migrate-state in "terraform init",
+				// -force copy implies -migrate-state in "tofu init",
 				// so m.migrateState is forced to true in this case even if
 				// the user didn't actually specify it. We'll use the other
 				// name here to avoid being confusing, then.
@@ -1529,13 +1540,13 @@ func (m *Meta) assertSupportedCloudInitOptions(mode cloud.ConfigChangeMode) tfdi
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
 					"Invalid command-line option",
-					fmt.Sprintf("The %s option is for migration between state backends only, and is not applicable when using Terraform Cloud.\n\nTerraform Cloud migration has additional steps, configured by interactive prompts.", name),
+					fmt.Sprintf("The %s option is for migration between state backends only, and is not applicable when using cloud backend.\n\nCloud backend migration has additional steps, configured by interactive prompts.", name),
 				))
 			} else {
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
 					"Invalid command-line option",
-					fmt.Sprintf("The %s option is for migration between state backends only, and is not applicable when using Terraform Cloud.\n\nState storage is handled automatically by Terraform Cloud and so the state storage location is not configurable.", name),
+					fmt.Sprintf("The %s option is for migration between state backends only, and is not applicable when using cloud backend.\n\nState storage is handled automatically by cloud backend and so the state storage location is not configurable.", name),
 				))
 			}
 		}
@@ -1548,16 +1559,16 @@ func (m *Meta) assertSupportedCloudInitOptions(mode cloud.ConfigChangeMode) tfdi
 //-------------------------------------------------------------------
 
 const errBackendLocalRead = `
-Error reading local state: %s
+Error reading local state: %w
 
-OpenTF is trying to read your local state to determine if there is
-state to migrate to your newly configured backend. OpenTF can't continue
+OpenTofu is trying to read your local state to determine if there is
+state to migrate to your newly configured backend. OpenTofu can't continue
 without this check because that would risk losing state. Please resolve the
 error above and try again.
 `
 
 const errBackendMigrateLocalDelete = `
-Error deleting local state after migration: %s
+Error deleting local state after migration: %w
 
 Your local state is deleted after successfully migrating it to the newly
 configured backend. As part of the deletion process, a backup is made at
@@ -1569,19 +1580,19 @@ issue above and retry the command.
 const errBackendNewUnknown = `
 The backend %q could not be found.
 
-This is the backend specified in your OpenTF configuration file.
+This is the backend specified in your OpenTofu configuration file.
 This error could be a simple typo in your configuration, but it can also
-be caused by using a OpenTF version that doesn't support the specified
-backend type. Please check your configuration and your OpenTF version.
+be caused by using a OpenTofu version that doesn't support the specified
+backend type. Please check your configuration and your OpenTofu version.
 
-If you'd like to run OpenTF and store state locally, you can fix this
+If you'd like to run OpenTofu and store state locally, you can fix this
 error by removing the backend configuration from your configuration.
 `
 
 const errBackendNoExistingWorkspaces = `
 No existing workspaces.
 
-Use the "opentf workspace" command to create and select a new workspace.
+Use the "tofu workspace" command to create and select a new workspace.
 If the backend already contains existing workspaces, you may need to update
 the backend configuration.
 `
@@ -1589,21 +1600,21 @@ the backend configuration.
 const errBackendSavedUnknown = `
 The backend %q could not be found.
 
-This is the backend that this OpenTF environment is configured to use
+This is the backend that this OpenTofu environment is configured to use
 both in your configuration and saved locally as your last-used backend.
-If it isn't found, it could mean an alternate version of OpenTF was
-used with this configuration. Please use the proper version of OpenTF that
+If it isn't found, it could mean an alternate version of OpenTofu was
+used with this configuration. Please use the proper version of OpenTofu that
 contains support for this backend.
 
 If you'd like to force remove this backend, you must update your configuration
-to not use the backend and run "opentf init" (or any other command) again.
+to not use the backend and run "tofu init" (or any other command) again.
 `
 
 const errBackendClearSaved = `
-Error clearing the backend configuration: %s
+Error clearing the backend configuration: %w
 
-OpenTF removes the saved backend configuration when you're removing a
-configured backend. This must be done so future OpenTF runs know to not
+OpenTofu removes the saved backend configuration when you're removing a
+configured backend. This must be done so future OpenTofu runs know to not
 use the backend configuration. Please look at the error above, resolve it,
 and try again.
 `
@@ -1611,14 +1622,14 @@ and try again.
 const errBackendInit = `
 Reason: %s
 
-The "backend" is the interface that OpenTF uses to store state,
+The "backend" is the interface that OpenTofu uses to store state,
 perform operations, etc. If this message is showing up, it means that the
-OpenTF configuration you're using is using a custom configuration for
-the OpenTF backend.
+OpenTofu configuration you're using is using a custom configuration for
+the OpenTofu backend.
 
 Changes to backend configurations require reinitialization. This allows
-OpenTF to set up the new configuration, copy existing state, etc. Please run
-"opentf init" with either the "-reconfigure" or "-migrate-state" flags to
+OpenTofu to set up the new configuration, copy existing state, etc. Please run
+"tofu init" with either the "-reconfigure" or "-migrate-state" flags to
 use the current configuration.
 
 If the change reason above is incorrect, please verify your configuration
@@ -1629,53 +1640,53 @@ configuration or state have been made.
 const errBackendInitCloud = `
 Reason: %s.
 
-Changes to the Terraform Cloud configuration block require reinitialization, to discover any changes to the available workspaces.
+Changes to the cloud backend configuration block require reinitialization, to discover any changes to the available workspaces.
 
 To re-initialize, run:
-  opentf init
+  tofu init
 
-OpenTF has not yet made changes to your existing configuration or state.
+OpenTofu has not yet made changes to your existing configuration or state.
 `
 
 const errBackendWriteSaved = `
-Error saving the backend configuration: %s
+Error saving the backend configuration: %w
 
-OpenTF saves the complete backend configuration in a local file for
+OpenTofu saves the complete backend configuration in a local file for
 configuring the backend on future operations. This cannot be disabled. Errors
 are usually due to simple file permission errors. Please look at the error
 above, resolve it, and try again.
 `
 
 const outputBackendMigrateChange = `
-OpenTF detected that the backend type changed from %q to %q.
+OpenTofu detected that the backend type changed from %q to %q.
 `
 
 const outputBackendMigrateLocal = `
-OpenTF has detected you're unconfiguring your previously set %q backend.
+OpenTofu has detected you're unconfiguring your previously set %q backend.
 `
 
 const outputBackendReconfigure = `
 [reset][bold]Backend configuration changed![reset]
 
-OpenTF has detected that the configuration specified for the backend
-has changed. OpenTF will now check for existing state in the backends.
+OpenTofu has detected that the configuration specified for the backend
+has changed. OpenTofu will now check for existing state in the backends.
 `
 
 const inputCloudInitCreateWorkspace = `
 There are no workspaces with the configured tags (%s)
-in your Terraform Cloud organization. To finish initializing, OpenTF needs at
+in your cloud backend organization. To finish initializing, OpenTofu needs at
 least one workspace available.
 
-OpenTF can create a properly tagged workspace for you now. Please enter a
-name to create a new Terraform Cloud workspace.
+OpenTofu can create a properly tagged workspace for you now. Please enter a
+name to create a new cloud backend workspace.
 `
 
 const successBackendUnset = `
-Successfully unset the backend %q. OpenTF will now operate locally.
+Successfully unset the backend %q. OpenTofu will now operate locally.
 `
 
 const successBackendSet = `
-Successfully configured the backend %q! OpenTF will automatically
+Successfully configured the backend %q! OpenTofu will automatically
 use this backend unless the backend configuration changes.
 `
 
@@ -1683,5 +1694,5 @@ var migrateOrReconfigDiag = tfdiags.Sourceless(
 	tfdiags.Error,
 	"Backend configuration changed",
 	"A change in the backend configuration has been detected, which may require migrating existing state.\n\n"+
-		"If you wish to attempt automatic migration of the state, use \"opentf init -migrate-state\".\n"+
-		`If you wish to store the current configuration with no changes to the state, use "opentf init -reconfigure".`)
+		"If you wish to attempt automatic migration of the state, use \"tofu init -migrate-state\".\n"+
+		`If you wish to store the current configuration with no changes to the state, use "tofu init -reconfigure".`)

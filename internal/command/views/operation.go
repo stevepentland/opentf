@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -8,17 +10,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/format"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonplan"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonprovider"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views/json"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/format"
+	"github.com/opentofu/opentofu/internal/command/jsonformat"
+	"github.com/opentofu/opentofu/internal/command/jsonplan"
+	"github.com/opentofu/opentofu/internal/command/jsonprovider"
+	"github.com/opentofu/opentofu/internal/command/views/json"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 type Operation interface {
@@ -27,10 +30,10 @@ type Operation interface {
 	Stopping()
 	Cancelled(planMode plans.Mode)
 
-	EmergencyDumpState(stateFile *statefile.File) error
+	EmergencyDumpState(stateFile *statefile.File, enc encryption.StateEncryption) error
 
 	PlannedChange(change *plans.ResourceInstanceChangeSrc)
-	Plan(plan *plans.Plan, schemas *opentf.Schemas)
+	Plan(plan *plans.Plan, schemas *tofu.Schemas)
 	PlanNextStep(planPath string, genConfigPath string)
 
 	Diagnostics(diags tfdiags.Diagnostics)
@@ -52,7 +55,7 @@ type OperationHuman struct {
 	// automated system rather than directly at a command prompt.
 	//
 	// This is a hint not to produce messages that expect that a user can
-	// run a follow-up command, perhaps because Terraform is running in
+	// run a follow-up command, perhaps because OpenTofu is running in
 	// some sort of workflow automation tool that abstracts away the
 	// exact commands that are being run.
 	inAutomation bool
@@ -81,9 +84,9 @@ func (v *OperationHuman) Cancelled(planMode plans.Mode) {
 	}
 }
 
-func (v *OperationHuman) EmergencyDumpState(stateFile *statefile.File) error {
+func (v *OperationHuman) EmergencyDumpState(stateFile *statefile.File, enc encryption.StateEncryption) error {
 	stateBuf := new(bytes.Buffer)
-	jsonErr := statefile.Write(stateFile, stateBuf)
+	jsonErr := statefile.Write(stateFile, stateBuf, enc)
 	if jsonErr != nil {
 		return jsonErr
 	}
@@ -91,7 +94,7 @@ func (v *OperationHuman) EmergencyDumpState(stateFile *statefile.File) error {
 	return nil
 }
 
-func (v *OperationHuman) Plan(plan *plans.Plan, schemas *opentf.Schemas) {
+func (v *OperationHuman) Plan(plan *plans.Plan, schemas *tofu.Schemas) {
 	outputs, changed, drift, attrs, err := jsonplan.MarshalForRenderer(plan, schemas)
 	if err != nil {
 		v.view.streams.Eprintf("Failed to marshal plan to json: %s", err)
@@ -102,6 +105,7 @@ func (v *OperationHuman) Plan(plan *plans.Plan, schemas *opentf.Schemas) {
 		Colorize:            v.view.colorize,
 		Streams:             v.view.streams,
 		RunningInAutomation: v.inAutomation,
+		ShowSensitive:       v.view.showSensitive,
 	}
 
 	jplan := jsonformat.Plan{
@@ -142,11 +146,12 @@ func (v *OperationHuman) PlanNextStep(planPath string, genConfigPath string) {
 	v.view.outputHorizRule()
 
 	if genConfigPath != "" {
-		v.view.streams.Printf(
+		v.view.streams.Print(
 			format.WordWrap(
 				"\n"+strings.TrimSpace(fmt.Sprintf(planHeaderGenConfig, genConfigPath)),
 				v.view.outputColumns(),
-			) + "\n")
+			) + "\n",
+		)
 	}
 
 	if planPath == "" {
@@ -157,7 +162,7 @@ func (v *OperationHuman) PlanNextStep(planPath string, genConfigPath string) {
 			) + "\n",
 		)
 	} else {
-		v.view.streams.Printf(
+		v.view.streams.Print(
 			format.WordWrap(
 				"\n"+strings.TrimSpace(fmt.Sprintf(planHeaderYesOutput, planPath, planPath)),
 				v.view.outputColumns(),
@@ -197,9 +202,9 @@ func (v *OperationJSON) Cancelled(planMode plans.Mode) {
 	}
 }
 
-func (v *OperationJSON) EmergencyDumpState(stateFile *statefile.File) error {
+func (v *OperationJSON) EmergencyDumpState(stateFile *statefile.File, enc encryption.StateEncryption) error {
 	stateBuf := new(bytes.Buffer)
-	jsonErr := statefile.Write(stateFile, stateBuf)
+	jsonErr := statefile.Write(stateFile, stateBuf, enc)
 	if jsonErr != nil {
 		return jsonErr
 	}
@@ -209,7 +214,7 @@ func (v *OperationJSON) EmergencyDumpState(stateFile *statefile.File) error {
 
 // Log a change summary and a series of "planned" messages for the changes in
 // the plan.
-func (v *OperationJSON) Plan(plan *plans.Plan, schemas *opentf.Schemas) {
+func (v *OperationJSON) Plan(plan *plans.Plan, schemas *tofu.Schemas) {
 	for _, dr := range plan.DriftedResources {
 		// In refresh-only mode, we output all resources marked as drifted,
 		// including those which have moved without other changes. In other plan
@@ -243,6 +248,8 @@ func (v *OperationJSON) Plan(plan *plans.Plan, schemas *opentf.Schemas) {
 		case plans.CreateThenDelete, plans.DeleteThenCreate:
 			cs.Add++
 			cs.Remove++
+		case plans.Forget:
+			cs.Forget++
 		}
 
 		if change.Action != plans.NoOp || !change.Addr.Equal(change.PrevRunAddr) || change.Importing != nil {
@@ -287,21 +294,21 @@ Two interrupts received. Exiting immediately. Note that data loss may have occur
 
 const interrupted = `
 Interrupt received.
-Please wait for OpenTF to exit or data loss may occur.
+Please wait for OpenTofu to exit or data loss may occur.
 Gracefully shutting down...
 `
 
 const planHeaderNoOutput = `
-Note: You didn't use the -out option to save this plan, so OpenTF can't guarantee to take exactly these actions if you run "opentf apply" now.
+Note: You didn't use the -out option to save this plan, so OpenTofu can't guarantee to take exactly these actions if you run "tofu apply" now.
 `
 
 const planHeaderYesOutput = `
 Saved the plan to: %s
 
 To perform exactly these actions, run the following command to apply:
-    opentf apply %q
+    tofu apply %q
 `
 
 const planHeaderGenConfig = `
-OpenTF has generated configuration and written it to %s. Please review the configuration and edit it as necessary before adding it to version control.
+OpenTofu has generated configuration and written it to %s. Please review the configuration and edit it as necessary before adding it to version control.
 `

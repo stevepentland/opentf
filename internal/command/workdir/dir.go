@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package workdir
@@ -9,12 +11,12 @@ import (
 	"path/filepath"
 )
 
-// Dir represents a single Terraform working directory.
+// Dir represents a single OpenTofu working directory.
 //
 // "Working directory" is unfortunately a slight misnomer, because non-default
 // options can potentially stretch the definition such that multiple working
 // directories end up appearing to share a data directory, or other similar
-// anomolies, but we continue to use this terminology both for historical
+// anomalies, but we continue to use this terminology both for historical
 // reasons and because it reflects the common case without any special
 // overrides.
 //
@@ -36,13 +38,13 @@ import (
 type Dir struct {
 	// mainDir is the path to the directory that we present as the
 	// "working directory" in the user model, which is typically the
-	// current working directory when running Terraform CLI, or the
+	// current working directory when running OpenTofu CLI, or the
 	// directory explicitly chosen by the user using the -chdir=...
 	// global option.
 	mainDir string
 
 	// originalDir is the path to the working directory that was
-	// selected when creating the Terraform CLI process, regardless of
+	// selected when creating the OpenTofu CLI process, regardless of
 	// -chdir=... being set. This is only for very limited purposes
 	// related to backward compatibility; most functionality should
 	// use mainDir instead.
@@ -82,9 +84,9 @@ func NewDir(mainPath string) *Dir {
 }
 
 // OverrideOriginalWorkingDir records a different path as the
-// "original working directory" for the reciever.
+// "original working directory" for the receiver.
 //
-// Use this only to record the original working directory when Terraform is run
+// Use this only to record the original working directory when OpenTofu is run
 // with the -chdir=... global option. In that case, the directory given in
 // -chdir=... is the "main path" to pass in to NewDir, while the original
 // working directory should be sent to this method.
@@ -112,10 +114,10 @@ func (d *Dir) RootModuleDir() string {
 }
 
 // OriginalWorkingDir returns the true, operating-system-originated working
-// directory that the current Terraform process was launched from.
+// directory that the current OpenTofu process was launched from.
 //
 // This is usually the same as the main working directory, but differs in the
-// special case where the user ran Terraform with the global -chdir=...
+// special case where the user ran OpenTofu with the global -chdir=...
 // option. This is here only for a few backward compatibility affordances
 // from before we had the -chdir=... option, so should typically not be used
 // for anything new.
@@ -123,7 +125,7 @@ func (d *Dir) OriginalWorkingDir() string {
 	return d.originalDir
 }
 
-// DataDir returns the base path where the reciever keeps all of the settings
+// DataDir returns the base path where the receiver keeps all of the settings
 // and artifacts that must persist between consecutive commands in a single
 // session.
 //
@@ -140,7 +142,7 @@ func (d *Dir) DataDir() string {
 //
 // For directories that already exist ensureDataDir will preserve their
 // permissions, while it'll create any new directories to be owned by the user
-// running Terraform, readable and writable by that user, and readable by
+// running OpenTofu, readable and writable by that user, and readable by
 // all other users, or some approximation of that on non-Unix platforms which
 // have a different permissions model.
 func (d *Dir) ensureDataDir() error {

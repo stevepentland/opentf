@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package getproviders
@@ -6,7 +8,7 @@ package getproviders
 import (
 	"context"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 )
 
 // HangingSource is an implementation of Source which hangs until the given

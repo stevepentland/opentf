@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package jsonprovider
@@ -6,8 +8,8 @@ package jsonprovider
 import (
 	"encoding/json"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 // FormatVersion represents the version of the json format and will be
@@ -22,9 +24,10 @@ type Providers struct {
 }
 
 type Provider struct {
-	Provider          *Schema            `json:"provider,omitempty"`
-	ResourceSchemas   map[string]*Schema `json:"resource_schemas,omitempty"`
-	DataSourceSchemas map[string]*Schema `json:"data_source_schemas,omitempty"`
+	Provider          *Schema              `json:"provider,omitempty"`
+	ResourceSchemas   map[string]*Schema   `json:"resource_schemas,omitempty"`
+	DataSourceSchemas map[string]*Schema   `json:"data_source_schemas,omitempty"`
+	Functions         map[string]*Function `json:"functions,omitempty"`
 }
 
 func newProviders() *Providers {
@@ -35,11 +38,11 @@ func newProviders() *Providers {
 	}
 }
 
-// MarshalForRenderer converts the provided internation representation of the
+// MarshalForRenderer converts the provided internal representation of the
 // schema into the public structured JSON versions.
 //
 // This is a format that can be read by the structured plan renderer.
-func MarshalForRenderer(s *opentf.Schemas) map[string]*Provider {
+func MarshalForRenderer(s *tofu.Schemas) map[string]*Provider {
 	schemas := make(map[string]*Provider, len(s.Providers))
 	for k, v := range s.Providers {
 		schemas[k.String()] = marshalProvider(v)
@@ -47,7 +50,7 @@ func MarshalForRenderer(s *opentf.Schemas) map[string]*Provider {
 	return schemas
 }
 
-func Marshal(s *opentf.Schemas) ([]byte, error) {
+func Marshal(s *tofu.Schemas) ([]byte, error) {
 	providers := newProviders()
 	providers.Schemas = MarshalForRenderer(s)
 	ret, err := json.Marshal(providers)
@@ -59,5 +62,6 @@ func marshalProvider(tps providers.ProviderSchema) *Provider {
 		Provider:          marshalSchema(tps.Provider),
 		ResourceSchemas:   marshalSchemas(tps.ResourceTypes),
 		DataSourceSchemas: marshalSchemas(tps.DataSources),
+		Functions:         marshalFunctions(tps.Functions),
 	}
 }

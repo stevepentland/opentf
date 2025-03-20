@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package localexec
@@ -13,9 +15,9 @@ import (
 
 	"github.com/armon/circbuf"
 	"github.com/mitchellh/go-linereader"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/provisioners"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/provisioners"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 	"github.com/zclconf/go-cty/cty"
 )
 

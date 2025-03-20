@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -7,30 +9,35 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/dag"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans/planfile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/dag"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/plans/planfile"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
-// GraphCommand is a Command implementation that takes a Terraform
+// GraphCommand is a Command implementation that takes a OpenTofu
 // configuration and outputs the dependency tree in graphical form.
 type GraphCommand struct {
 	Meta
 }
 
 func (c *GraphCommand) Run(args []string) int {
+	var diags tfdiags.Diagnostics
+
 	var drawCycles bool
 	var graphTypeStr string
 	var moduleDepth int
 	var verbose bool
 	var planPath string
 
+	ctx := c.CommandContext()
+
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.defaultFlagSet("graph")
+	c.Meta.varFlagSet(cmdFlags)
 	cmdFlags.BoolVar(&drawCycles, "draw-cycles", false, "draw-cycles")
 	cmdFlags.StringVar(&graphTypeStr, "type", "", "type")
 	cmdFlags.IntVar(&moduleDepth, "module-depth", -1, "module-depth")
@@ -42,7 +49,7 @@ func (c *GraphCommand) Run(args []string) int {
 		return 1
 	}
 
-	configPath, err := ModulePath(cmdFlags.Args())
+	configPath, err := modulePath(cmdFlags.Args())
 	if err != nil {
 		c.Ui.Error(err.Error())
 		return 1
@@ -54,33 +61,70 @@ func (c *GraphCommand) Run(args []string) int {
 		return 1
 	}
 
+	// Load the encryption configuration
+	enc, encDiags := c.EncryptionFromPath(configPath)
+	diags = diags.Append(encDiags)
+	if encDiags.HasErrors() {
+		c.showDiagnostics(diags)
+		return 1
+	}
+
 	// Try to load plan if path is specified
 	var planFile *planfile.WrappedPlanFile
 	if planPath != "" {
-		planFile, err = c.PlanFile(planPath)
+		planFile, err = c.PlanFile(planPath, enc.Plan())
 		if err != nil {
 			c.Ui.Error(err.Error())
 			return 1
 		}
 	}
 
-	var diags tfdiags.Diagnostics
-
-	backendConfig, backendDiags := c.loadBackendConfig(configPath)
-	diags = diags.Append(backendDiags)
-	if diags.HasErrors() {
-		c.showDiagnostics(diags)
-		return 1
-	}
-
 	// Load the backend
-	b, backendDiags := c.Backend(&BackendOpts{
-		Config: backendConfig,
-	})
-	diags = diags.Append(backendDiags)
-	if backendDiags.HasErrors() {
-		c.showDiagnostics(diags)
-		return 1
+	var b backend.Enhanced
+	if lp, ok := planFile.Local(); ok {
+		plan, planErr := lp.ReadPlan()
+		if planErr != nil {
+			diags = diags.Append(tfdiags.Sourceless(
+				tfdiags.Error,
+				"Failed to read plan from plan file",
+				fmt.Sprintf("Cannot read the plan from the given plan file: %s.", planErr),
+			))
+			c.showDiagnostics(diags)
+			return 1
+		}
+		if plan.Backend.Config == nil {
+			// Should never happen; always indicates a bug in the creation of the plan file
+			diags = diags.Append(tfdiags.Sourceless(
+				tfdiags.Error,
+				"Failed to read plan from plan file",
+				"The given plan file does not have a valid backend configuration. This is a bug in the OpenTofu command that generated this plan file.",
+			))
+			c.showDiagnostics(diags)
+			return 1
+		}
+		var backendDiags tfdiags.Diagnostics
+		b, backendDiags = c.BackendForLocalPlan(plan.Backend, enc.State())
+		diags = diags.Append(backendDiags)
+		if backendDiags.HasErrors() {
+			c.showDiagnostics(diags)
+			return 1
+		}
+	} else {
+		backendConfig, backendDiags := c.loadBackendConfig(configPath)
+		diags = diags.Append(backendDiags)
+		if diags.HasErrors() {
+			c.showDiagnostics(diags)
+			return 1
+		}
+
+		b, backendDiags = c.Backend(&BackendOpts{
+			Config: backendConfig,
+		}, enc.State())
+		diags = diags.Append(backendDiags)
+		if backendDiags.HasErrors() {
+			c.showDiagnostics(diags)
+			return 1
+		}
 	}
 
 	// We require a local backend
@@ -95,11 +139,21 @@ func (c *GraphCommand) Run(args []string) int {
 	c.ignoreRemoteVersionConflict(b)
 
 	// Build the operation
-	opReq := c.Operation(b, arguments.ViewHuman)
+	opReq := c.Operation(b, arguments.ViewHuman, enc)
 	opReq.ConfigDir = configPath
 	opReq.ConfigLoader, err = c.initConfigLoader()
 	opReq.PlanFile = planFile
 	opReq.AllowUnsetVariables = true
+
+	// Inject information required for static evaluation
+	var callDiags tfdiags.Diagnostics
+	opReq.RootCall, callDiags = c.rootModuleCall(opReq.ConfigDir)
+	diags = diags.Append(callDiags)
+	if callDiags.HasErrors() {
+		c.showDiagnostics(diags)
+		return 1
+	}
+
 	if err != nil {
 		diags = diags.Append(err)
 		c.showDiagnostics(diags)
@@ -107,7 +161,7 @@ func (c *GraphCommand) Run(args []string) int {
 	}
 
 	// Get the context
-	lr, _, ctxDiags := local.LocalRun(opReq)
+	lr, _, ctxDiags := local.LocalRun(ctx, opReq)
 	diags = diags.Append(ctxDiags)
 	if ctxDiags.HasErrors() {
 		c.showDiagnostics(diags)
@@ -123,7 +177,7 @@ func (c *GraphCommand) Run(args []string) int {
 		}
 	}
 
-	var g *opentf.Graph
+	var g *tofu.Graph
 	var graphDiags tfdiags.Diagnostics
 	switch graphTypeStr {
 	case "plan":
@@ -135,7 +189,7 @@ func (c *GraphCommand) Run(args []string) int {
 	case "apply":
 		plan := lr.Plan
 
-		// Historically "terraform graph" would allow the nonsensical request to
+		// Historically "tofu graph" would allow the nonsensical request to
 		// render an apply graph without a plan, so we continue to support that
 		// here, though perhaps one day this should be an error.
 		if lr.Plan == nil {
@@ -171,7 +225,7 @@ func (c *GraphCommand) Run(args []string) int {
 		return 1
 	}
 
-	graphStr, err := opentf.GraphDot(g, &dag.DotOpts{
+	graphStr, err := tofu.GraphDot(g, &dag.DotOpts{
 		DrawCycles: drawCycles,
 		MaxDepth:   moduleDepth,
 		Verbose:    verbose,
@@ -196,7 +250,7 @@ func (c *GraphCommand) Run(args []string) int {
 
 func (c *GraphCommand) Help() string {
 	helpText := `
-Usage: opentf [global options] graph [options]
+Usage: tofu [global options] graph [options]
 
   Produces a representation of the dependency graph between different
   objects in the current configuration and state.
@@ -214,11 +268,20 @@ Options:
                    This helps when diagnosing cycle errors.
 
   -type=plan       Type of graph to output. Can be: plan, plan-refresh-only,
-                   plan-destroy, or apply. By default OpenTF chooses
+                   plan-destroy, or apply. By default OpenTofu chooses
 				   "plan", or "apply" if you also set the -plan=... option.
 
-  -module-depth=n  (deprecated) In prior versions of OpenTF, specified the
+  -module-depth=n  (deprecated) In prior versions of OpenTofu, specified the
 				   depth of modules to show in the output.
+
+  -var 'foo=bar'     Set a value for one of the input variables in the root
+                     module of the configuration. Use this option more than
+                     once to set more than one variable.
+
+  -var-file=filename Load variable values from the given file, in addition
+                     to the default files terraform.tfvars and *.auto.tfvars.
+                     Use this option more than once to include more than one
+                     variables file.
 `
 	return strings.TrimSpace(helpText)
 }

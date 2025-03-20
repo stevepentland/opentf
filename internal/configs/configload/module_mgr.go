@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package configload
@@ -8,8 +10,8 @@ import (
 	"path/filepath"
 
 	"github.com/hashicorp/terraform-svchost/disco"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/modsdir"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/registry"
+	"github.com/opentofu/opentofu/internal/modsdir"
+	"github.com/opentofu/opentofu/internal/registry"
 	"github.com/spf13/afero"
 )
 

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -9,9 +11,9 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views/json"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
-	tfversion "github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/command/views/json"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	tfversion "github.com/opentofu/opentofu/version"
 )
 
 // This version describes the schema of JSON UI messages. This version must be
@@ -21,9 +23,10 @@ const JSON_UI_VERSION = "1.2"
 
 func NewJSONView(view *View) *JSONView {
 	log := hclog.New(&hclog.LoggerOptions{
-		Name:       "opentf.ui",
-		Output:     view.streams.Stdout.File,
-		JSONFormat: true,
+		Name:               "tofu.ui",
+		Output:             view.streams.Stdout.File,
+		JSONFormat:         true,
+		JSONEscapeDisabled: true,
 	})
 	jv := &JSONView{
 		log:  log,
@@ -51,9 +54,9 @@ type JSONView struct {
 func (v *JSONView) Version() {
 	version := tfversion.String()
 	v.log.Info(
-		fmt.Sprintf("OpenTF %s", version),
+		fmt.Sprintf("OpenTofu %s", version),
 		"type", json.MessageVersion,
-		"opentf", version,
+		"tofu", version,
 		"ui", JSON_UI_VERSION,
 	)
 }
@@ -125,4 +128,24 @@ func (v *JSONView) Outputs(outputs json.Outputs) {
 		"type", json.MessageOutputs,
 		"outputs", outputs,
 	)
+}
+
+// Output is designed for supporting command.WrappedUi
+func (v *JSONView) Output(message string) {
+	v.log.Info(message, "type", "output")
+}
+
+// Info is designed for supporting command.WrappedUi
+func (v *JSONView) Info(message string) {
+	v.log.Info(message)
+}
+
+// Warn is designed for supporting command.WrappedUi
+func (v *JSONView) Warn(message string) {
+	v.log.Warn(message)
+}
+
+// Error is designed for supporting command.WrappedUi
+func (v *JSONView) Error(message string) {
+	v.log.Error(message)
 }

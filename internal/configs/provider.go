@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package configs
@@ -9,9 +11,12 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/instances"
+	"github.com/opentofu/opentofu/internal/lang/evalchecks"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 // Provider represents a "provider" block in a module or file. A provider
@@ -35,6 +40,15 @@ type Provider struct {
 	// export this so providers don't need to be re-resolved.
 	// This same field is also added to the ProviderConfigRef struct.
 	providerType addrs.Provider
+
+	// IsMocked indicates if this provider has been mocked. It is used in
+	// testing framework to instantiate test provider wrapper.
+	IsMocked          bool
+	MockResources     []*MockResource
+	OverrideResources []*OverrideResource
+
+	ForEach   hcl.Expression
+	Instances map[addrs.InstanceKey]instances.RepetitionData
 }
 
 func decodeProviderBlock(block *hcl.Block) (*Provider, hcl.Diagnostics) {
@@ -80,7 +94,7 @@ func decodeProviderBlock(block *hcl.Block) (*Provider, hcl.Diagnostics) {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagWarning,
 			Summary:  "Version constraints inside provider configuration blocks are deprecated",
-			Detail:   "OpenTF 0.13 and earlier allowed provider version constraints inside the provider configuration block, but that is now deprecated and will be removed in a future version of OpenTF. To silence this warning, move the provider version constraint into the required_providers block.",
+			Detail:   "OpenTofu 0.13 and earlier allowed provider version constraints inside the provider configuration block, but that is now deprecated and will be removed in a future version of OpenTofu. To silence this warning, move the provider version constraint into the required_providers block.",
 			Subject:  attr.Expr.Range().Ptr(),
 		})
 		var versionDiags hcl.Diagnostics
@@ -88,13 +102,26 @@ func decodeProviderBlock(block *hcl.Block) (*Provider, hcl.Diagnostics) {
 		diags = append(diags, versionDiags...)
 	}
 
+	if attr, exists := content.Attributes["for_each"]; exists {
+		provider.ForEach = attr.Expr
+	}
+
+	if len(provider.Alias) == 0 && provider.ForEach != nil {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  `Alias required when using "for_each"`,
+			Detail:   `The for_each argument is allowed only for provider configurations with an alias.`,
+			Subject:  provider.ForEach.Range().Ptr(),
+		})
+	}
+
 	// Reserved attribute names
-	for _, name := range []string{"count", "depends_on", "for_each", "source"} {
+	for _, name := range []string{"count", "depends_on", "source"} {
 		if attr, exists := content.Attributes[name]; exists {
 			diags = append(diags, &hcl.Diagnostic{
 				Severity: hcl.DiagError,
 				Summary:  "Reserved argument name in provider block",
-				Detail:   fmt.Sprintf("The provider argument name %q is reserved for use by OpenTF in a future version.", name),
+				Detail:   fmt.Sprintf("The provider argument name %q is reserved for use by OpenTofu in a future version.", name),
 				Subject:  &attr.NameRange,
 			})
 		}
@@ -129,13 +156,45 @@ func decodeProviderBlock(block *hcl.Block) (*Provider, hcl.Diagnostics) {
 			diags = append(diags, &hcl.Diagnostic{
 				Severity: hcl.DiagError,
 				Summary:  "Reserved block type name in provider block",
-				Detail:   fmt.Sprintf("The block type name %q is reserved for use by OpenTF in a future version.", block.Type),
+				Detail:   fmt.Sprintf("The block type name %q is reserved for use by OpenTofu in a future version.", block.Type),
 				Subject:  &block.TypeRange,
 			})
 		}
 	}
 
 	return provider, diags
+}
+
+func (p *Provider) decodeStaticFields(eval *StaticEvaluator) hcl.Diagnostics {
+	var diags hcl.Diagnostics
+
+	if p.ForEach != nil {
+		forEachRefsFunc := func(refs []*addrs.Reference) (*hcl.EvalContext, tfdiags.Diagnostics) {
+			var diags tfdiags.Diagnostics
+			evalContext, evalDiags := eval.EvalContext(StaticIdentifier{
+				Module:    eval.call.addr,
+				Subject:   fmt.Sprintf("provider.%s.%s.for_each", p.Name, p.Alias),
+				DeclRange: p.ForEach.Range(),
+			}, refs)
+			return evalContext, diags.Append(evalDiags)
+		}
+
+		forVal, evalDiags := evalchecks.EvaluateForEachExpression(p.ForEach, forEachRefsFunc, nil)
+		diags = append(diags, evalDiags.ToHCL()...)
+		if evalDiags.HasErrors() {
+			return diags
+		}
+
+		p.Instances = make(map[addrs.InstanceKey]instances.RepetitionData)
+		for k, v := range forVal {
+			p.Instances[addrs.StringKey(k)] = instances.RepetitionData{
+				EachKey:   cty.StringVal(k),
+				EachValue: v,
+			}
+		}
+	}
+
+	return diags
 }
 
 // Addr returns the address of the receiving provider configuration, relative
@@ -240,11 +299,13 @@ var providerBlockSchema = &hcl.BodySchema{
 		{
 			Name: "version",
 		},
+		{
+			Name: "for_each",
+		},
 
 		// Attribute names reserved for future expansion.
 		{Name: "count"},
 		{Name: "depends_on"},
-		{Name: "for_each"},
 		{Name: "source"},
 	},
 	Blocks: []hcl.BlockHeaderSchema{

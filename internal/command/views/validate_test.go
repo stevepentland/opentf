@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -8,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/terminal"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 func TestValidateHuman(t *testing.T) {

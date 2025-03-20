@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package local
@@ -7,20 +9,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/logging"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/logging"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -32,7 +34,7 @@ const (
 )
 
 // Local is an implementation of EnhancedBackend that performs all operations
-// locally. This is the "default" backend and implements normal OpenTF
+// locally. This is the "default" backend and implements normal OpenTofu
 // behavior as it is well known.
 type Local struct {
 	// The State* paths are set from the backend config, and may be left blank
@@ -66,9 +68,9 @@ type Local struct {
 	// here as they're loaded.
 	states map[string]statemgr.Full
 
-	// OpenTF context. Many of these will be overridden or merged by
+	// OpenTofu context. Many of these will be overridden or merged by
 	// Operation. See Operation for more details.
-	ContextOpts *opentf.ContextOpts
+	ContextOpts *tofu.ContextOpts
 
 	// OpInput will ask for necessary input prior to performing any operations.
 	//
@@ -88,20 +90,25 @@ type Local struct {
 
 	// opLock locks operations
 	opLock sync.Mutex
+
+	encryption encryption.StateEncryption
 }
 
 var _ backend.Backend = (*Local)(nil)
 
 // New returns a new initialized local backend.
-func New() *Local {
-	return NewWithBackend(nil)
+func New(enc encryption.StateEncryption) *Local {
+	return &Local{
+		encryption: enc,
+	}
 }
 
 // NewWithBackend returns a new local backend initialized with a
 // dedicated backend for non-enhanced behavior.
-func NewWithBackend(backend backend.Backend) *Local {
+func NewWithBackend(backend backend.Backend, enc encryption.StateEncryption) *Local {
 	return &Local{
-		Backend: backend,
+		Backend:    backend,
+		encryption: enc,
 	}
 }
 
@@ -196,7 +203,7 @@ func (b *Local) Workspaces() ([]string, error) {
 	// the listing always start with "default"
 	envs := []string{backend.DefaultStateName}
 
-	entries, err := ioutil.ReadDir(b.stateWorkspaceDir())
+	entries, err := os.ReadDir(b.stateWorkspaceDir())
 	// no error if there's no envs configured
 	if os.IsNotExist(err) {
 		return envs, nil
@@ -256,7 +263,7 @@ func (b *Local) StateMgr(name string) (statemgr.Full, error) {
 	statePath, stateOutPath, backupPath := b.StatePaths(name)
 	log.Printf("[TRACE] backend/local: state manager for workspace %q will:\n - read initial snapshot from %s\n - write new snapshots to %s\n - create any backup at %s", name, statePath, stateOutPath, backupPath)
 
-	s := statemgr.NewFilesystemBetweenPaths(statePath, stateOutPath)
+	s := statemgr.NewFilesystemBetweenPaths(statePath, stateOutPath, b.encryption)
 	if backupPath != "" {
 		s.SetBackupPath(backupPath)
 	}
@@ -270,7 +277,7 @@ func (b *Local) StateMgr(name string) (statemgr.Full, error) {
 
 // Operation implements backend.Enhanced
 //
-// This will initialize an in-memory opentf.Context to perform the
+// This will initialize an in-memory tofu.Context to perform the
 // operation within this process.
 //
 // The given operation parameter will be merged with the ContextOpts on
@@ -293,8 +300,8 @@ func (b *Local) Operation(ctx context.Context, op *backend.Operation) (*backend.
 	default:
 		return nil, fmt.Errorf(
 			"unsupported operation type: %s\n\n"+
-				"This is a bug in OpenTF and should be reported. The local backend\n"+
-				"is built-in to OpenTF and should always support all operations.",
+				"This is a bug in OpenTofu and should be reported. The local backend\n"+
+				"is built-in to OpenTofu and should always support all operations.",
 			op.Type)
 	}
 
@@ -302,26 +309,33 @@ func (b *Local) Operation(ctx context.Context, op *backend.Operation) (*backend.
 	b.opLock.Lock()
 
 	// Build our running operation
-	// the runninCtx is only used to block until the operation returns.
-	runningCtx, done := context.WithCancel(context.Background())
+	// the runningCtx is only used to block until the operation returns. We
+	// intentionally detach it from any upstream cancellation because we
+	// need this to cancel only once our goroutine below is finished.
+	runningCtx, done := context.WithCancel(context.WithoutCancel(ctx))
 	runningOp := &backend.RunningOperation{
 		Context: runningCtx,
 	}
 
 	// stopCtx wraps the context passed in, and is used to signal a graceful Stop.
+	// This one _does_ inherit cancellations from the caller.
 	stopCtx, stop := context.WithCancel(ctx)
 	runningOp.Stop = stop
 
 	// cancelCtx is used to cancel the operation immediately, usually
-	// indicating that the process is exiting.
-	cancelCtx, cancel := context.WithCancel(context.Background())
+	// indicating that the process is exiting. This is intentionally
+	// detached from any upstream cancellation so that it will be
+	// cancelled only once our goroutine below is finished.
+	cancelCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	runningOp.Cancel = cancel
 
 	op.StateLocker = op.StateLocker.WithContext(stopCtx)
 
+	panicHandler := logging.PanicHandlerWithTraceFn()
+
 	// Do it
 	go func() {
-		defer logging.PanicHandler()
+		defer panicHandler()
 		defer done()
 		defer stop()
 		defer cancel()
@@ -335,12 +349,12 @@ func (b *Local) Operation(ctx context.Context, op *backend.Operation) (*backend.
 }
 
 // opWait waits for the operation to complete, and a stop signal or a
-// cancelation signal.
+// cancellation signal.
 func (b *Local) opWait(
 	doneCh <-chan struct{},
 	stopCtx context.Context,
 	cancelCtx context.Context,
-	tfCtx *opentf.Context,
+	tfCtx *tofu.Context,
 	opStateMgr statemgr.Persister,
 	view views.Operation) (canceled bool) {
 	// Wait for the operation to finish or for us to be interrupted so
@@ -493,4 +507,4 @@ func (b *Local) stateWorkspaceDir() string {
 
 const earlyStateWriteErrorFmt = `Error: %s
 
-OpenTF encountered an error attempting to save the state before cancelling the current operation. Once the operation is complete another attempt will be made to save the final state.`
+OpenTofu encountered an error attempting to save the state before cancelling the current operation. Once the operation is complete another attempt will be made to save the final state.`

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package objchange
@@ -9,7 +11,7 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
 )
 
 // ProposedNew constructs a proposed new object value by combining the
@@ -56,7 +58,7 @@ func ProposedNew(schema *configschema.Block, prior, config cty.Value) cty.Value 
 // provider when the data resource is finally read.
 //
 // Data resources are different because the planning of them is handled
-// entirely within OpenTF Core and not subject to customization by the
+// entirely within OpenTofu Core and not subject to customization by the
 // provider. This function is, in effect, producing an equivalent result to
 // passing the proposedNewBlock result into a provider's PlanResourceChange
 // function, assuming a fixed implementation of PlanResourceChange that just

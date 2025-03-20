@@ -1,16 +1,18 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package providercache
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/getproviders"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/getproviders"
 )
 
 // CachedProvider represents a provider package in a cache directory.
@@ -104,18 +106,18 @@ func (cp *CachedProvider) HashV1() (getproviders.Hash, error) {
 // slashes and backslashes as long as the separators are consistent within a
 // particular path string.
 func (cp *CachedProvider) ExecutableFile() (string, error) {
-	infos, err := ioutil.ReadDir(cp.PackageDir)
+	infos, err := os.ReadDir(cp.PackageDir)
 	if err != nil {
 		// If the directory itself doesn't exist or isn't readable then we
 		// can't access an executable in it.
-		return "", fmt.Errorf("could not read package directory: %s", err)
+		return "", fmt.Errorf("could not read package directory: %w", err)
 	}
 
 	// For a provider named e.g. tf.example.com/awesomecorp/happycloud, we
 	// expect an executable file whose name starts with
 	// "terraform-provider-happycloud", followed by zero or more additional
 	// characters. If there _are_ additional characters then the first one
-	// must be an underscore or a period, like in thse examples:
+	// must be an underscore or a period, like in these examples:
 	// - terraform-provider-happycloud_v1.0.0
 	// - terraform-provider-happycloud.exe
 	//

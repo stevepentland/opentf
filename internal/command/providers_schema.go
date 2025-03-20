@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -7,13 +9,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonprovider"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/jsonprovider"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
-// ProvidersCommand is a Command implementation that prints out information
+// ProvidersSchemaCommand is a Command implementation that prints out information
 // about the providers used in the current configuration/state.
 type ProvidersSchemaCommand struct {
 	Meta
@@ -28,8 +30,11 @@ func (c *ProvidersSchemaCommand) Synopsis() string {
 }
 
 func (c *ProvidersSchemaCommand) Run(args []string) int {
+	ctx := c.CommandContext()
+
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.defaultFlagSet("providers schema")
+	c.Meta.varFlagSet(cmdFlags)
 	var jsonOutput bool
 	cmdFlags.BoolVar(&jsonOutput, "json", false, "produce JSON output")
 
@@ -41,7 +46,7 @@ func (c *ProvidersSchemaCommand) Run(args []string) int {
 
 	if !jsonOutput {
 		c.Ui.Error(
-			"The `opentf providers schema` command requires the `-json` flag.\n")
+			"The `tofu providers schema` command requires the `-json` flag.\n")
 		cmdFlags.Usage()
 		return 1
 	}
@@ -55,8 +60,15 @@ func (c *ProvidersSchemaCommand) Run(args []string) int {
 
 	var diags tfdiags.Diagnostics
 
+	enc, encDiags := c.Encryption()
+	diags = diags.Append(encDiags)
+	if encDiags.HasErrors() {
+		c.showDiagnostics(diags)
+		return 1
+	}
+
 	// Load the backend
-	b, backendDiags := c.Backend(nil)
+	b, backendDiags := c.Backend(nil, enc.State())
 	diags = diags.Append(backendDiags)
 	if backendDiags.HasErrors() {
 		c.showDiagnostics(diags)
@@ -82,9 +94,17 @@ func (c *ProvidersSchemaCommand) Run(args []string) int {
 	}
 
 	// Build the operation
-	opReq := c.Operation(b, arguments.ViewJSON)
+	opReq := c.Operation(b, arguments.ViewJSON, enc)
 	opReq.ConfigDir = cwd
 	opReq.ConfigLoader, err = c.initConfigLoader()
+	var callDiags tfdiags.Diagnostics
+	opReq.RootCall, callDiags = c.rootModuleCall(opReq.ConfigDir)
+	diags = diags.Append(callDiags)
+	if callDiags.HasErrors() {
+		c.showDiagnostics(diags)
+		return 1
+	}
+
 	opReq.AllowUnsetVariables = true
 	if err != nil {
 		diags = diags.Append(err)
@@ -93,7 +113,7 @@ func (c *ProvidersSchemaCommand) Run(args []string) int {
 	}
 
 	// Get the context
-	lr, _, ctxDiags := local.LocalRun(opReq)
+	lr, _, ctxDiags := local.LocalRun(ctx, opReq)
 	diags = diags.Append(ctxDiags)
 	if ctxDiags.HasErrors() {
 		c.showDiagnostics(diags)
@@ -118,8 +138,19 @@ func (c *ProvidersSchemaCommand) Run(args []string) int {
 }
 
 const providersSchemaCommandHelp = `
-Usage: opentf [global options] providers schema -json
+Usage: tofu [global options] providers schema [options] -json
 
   Prints out a json representation of the schemas for all providers used 
   in the current configuration.
+
+Options:
+
+  -var 'foo=bar'     Set a value for one of the input variables in the root
+                     module of the configuration. Use this option more than
+                     once to set more than one variable.
+
+  -var-file=filename Load variable values from the given file, in addition
+                     to the default files terraform.tfvars and *.auto.tfvars.
+                     Use this option more than once to include more than one
+                     variables file.
 `

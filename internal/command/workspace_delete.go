@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -11,11 +13,11 @@ import (
 	"github.com/mitchellh/cli"
 	"github.com/posener/complete"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/clistate"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/clistate"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 type WorkspaceDeleteCommand struct {
@@ -31,6 +33,7 @@ func (c *WorkspaceDeleteCommand) Run(args []string) int {
 	var stateLock bool
 	var stateLockTimeout time.Duration
 	cmdFlags := c.Meta.defaultFlagSet("workspace delete")
+	c.Meta.varFlagSet(cmdFlags)
 	cmdFlags.BoolVar(&force, "force", false, "force removal of a non-empty workspace")
 	cmdFlags.BoolVar(&stateLock, "lock", true, "lock state")
 	cmdFlags.DurationVar(&stateLockTimeout, "lock-timeout", 0, "lock timeout")
@@ -46,7 +49,7 @@ func (c *WorkspaceDeleteCommand) Run(args []string) int {
 		return cli.RunResultHelp
 	}
 
-	configPath, err := ModulePath(args[1:])
+	configPath, err := modulePath(args[1:])
 	if err != nil {
 		c.Ui.Error(err.Error())
 		return 1
@@ -61,10 +64,18 @@ func (c *WorkspaceDeleteCommand) Run(args []string) int {
 		return 1
 	}
 
+	// Load the encryption configuration
+	enc, encDiags := c.EncryptionFromPath(configPath)
+	diags = diags.Append(encDiags)
+	if encDiags.HasErrors() {
+		c.showDiagnostics(diags)
+		return 1
+	}
+
 	// Load the backend
 	b, backendDiags := c.Backend(&BackendOpts{
 		Config: backendConfig,
-	})
+	}, enc.State())
 	diags = diags.Append(backendDiags)
 	if backendDiags.HasErrors() {
 		c.showDiagnostics(diags)
@@ -150,7 +161,7 @@ func (c *WorkspaceDeleteCommand) Run(args []string) int {
 			tfdiags.Error,
 			"Workspace is not empty",
 			fmt.Sprintf(
-				"Workspace %q is currently tracking the following resource instances:%s\n\nDeleting this workspace would cause OpenTF to lose track of any associated remote objects, which would then require you to delete them manually outside of OpenTF. You should destroy these objects with OpenTF before deleting the workspace.\n\nIf you want to delete this workspace anyway, and have OpenTF forget about these managed objects, use the -force option to disable this safety check.",
+				"Workspace %q is currently tracking the following resource instances:%s\n\nDeleting this workspace would cause OpenTofu to lose track of any associated remote objects, which would then require you to delete them manually outside of OpenTofu. You should destroy these objects with OpenTofu before deleting the workspace.\n\nIf you want to delete this workspace anyway, and have OpenTofu forget about these managed objects, use the -force option to disable this safety check.",
 				workspace, buf.String(),
 			),
 		))
@@ -207,15 +218,15 @@ func (c *WorkspaceDeleteCommand) AutocompleteFlags() complete.Flags {
 
 func (c *WorkspaceDeleteCommand) Help() string {
 	helpText := `
-Usage: opentf [global options] workspace delete [OPTIONS] NAME
+Usage: tofu [global options] workspace delete [options] NAME
 
-  Delete a OpenTF workspace
+  Delete a OpenTofu workspace
 
 
 Options:
 
   -force             Remove a workspace even if it is managing resources.
-                     OpenTF can no longer track or manage the workspace's
+                     OpenTofu can no longer track or manage the workspace's
                      infrastructure.
 
   -lock=false        Don't hold a state lock during the operation. This is
@@ -223,6 +234,15 @@ Options:
                      against the same workspace.
 
   -lock-timeout=0s   Duration to retry a state lock.
+
+  -var 'foo=bar'     Set a value for one of the input variables in the root
+                     module of the configuration. Use this option more than
+                     once to set more than one variable.
+
+  -var-file=filename Load variable values from the given file, in addition
+                     to the default files terraform.tfvars and *.auto.tfvars.
+                     Use this option more than once to include more than one
+                     variables file.
 
 `
 	return strings.TrimSpace(helpText)

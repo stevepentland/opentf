@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package getmodules
@@ -18,7 +20,7 @@ import (
 // one of those other functions instead. The addrs package can potentially
 // perform other processing in addition to just the go-getter detection.
 //
-// Note that this function expects to recieve only a package address, not
+// Note that this function expects to receive only a package address, not
 // a full source address that might also include a subdirectory portion.
 // The caller must trim off any subdirectory portion using
 // getmodules.SplitPackageSubdir before calling this function, passing in
@@ -32,7 +34,7 @@ import (
 //
 // Some of go-getter's detectors make outgoing HTTP requests, and so
 // the behavior of this function may depend on the network connectivity
-// of the system where OpenTF is running. However, most of the getters
+// of the system where OpenTofu is running. However, most of the getters
 // we use are local-only, and so HTTP requests are only for some ambiguous
 // edge-cases, such as the BitBucket detector which has a mechanism to
 // detect whether to use Git or Mercurial, because earlier versions of
@@ -48,7 +50,7 @@ func NormalizePackageAddress(given string) (packageAddr, subDir string, err erro
 
 	// NOTE: We're passing an empty string to the "current working directory"
 	// here because that's only relevant for relative filesystem paths,
-	// but OpenTF handles relative filesystem paths itself outside of
+	// but OpenTofu handles relative filesystem paths itself outside of
 	// go-getter and so it'd always be an error to pass one into here.
 	// go-getter's "file" detector returns an error if it encounters a
 	// relative path when the pwd argument is empty.

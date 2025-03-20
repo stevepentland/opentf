@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -8,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/lang/marks"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/lang/marks"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/terminal"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -103,23 +105,33 @@ func TestApplyHuman_help(t *testing.T) {
 // Hooks and ResourceCount are tangled up and easiest to test together.
 func TestApply_resourceCount(t *testing.T) {
 	testCases := map[string]struct {
-		destroy   bool
-		want      string
-		importing bool
+		destroy    bool
+		want       string
+		importing  bool
+		forgetting bool
 	}{
 		"apply": {
 			false,
 			"Apply complete! Resources: 1 added, 2 changed, 3 destroyed.",
+			false,
 			false,
 		},
 		"destroy": {
 			true,
 			"Destroy complete! Resources: 3 destroyed.",
 			false,
+			false,
 		},
 		"import": {
 			false,
 			"Apply complete! Resources: 1 imported, 1 added, 2 changed, 3 destroyed.",
+			true,
+			false,
+		},
+		"forget": {
+			false,
+			"Apply complete! Resources: 1 added, 2 changed, 3 destroyed, 1 forgotten.",
+			false,
 			true,
 		},
 	}
@@ -151,6 +163,10 @@ func TestApply_resourceCount(t *testing.T) {
 
 				if tc.importing {
 					count.Imported = 1
+				}
+
+				if tc.forgetting {
+					count.Forgotten = 1
 				}
 
 				v.ResourceCount("")
@@ -251,7 +267,7 @@ func TestApplyJSON_outputs(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "Outputs: 2",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "outputs",
 			"outputs": map[string]interface{}{
 				"boop_count": map[string]interface{}{

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package statefile
@@ -6,7 +8,7 @@ package statefile
 // looksLikeVersion0 sniffs for the signature indicating a version 0 state
 // file.
 //
-// Version 0 was the number retroactively assigned to Terraform's initial
+// Version 0 was the number retroactively assigned to OpenTofu's initial
 // (unversioned) binary state file format, which was later superseded by the
 // version 1 format in JSON.
 //

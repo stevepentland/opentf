@@ -1,12 +1,14 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 syntax = "proto3";
 package tfplan;
 
-// For OpenTF's own parsing, the proto stub types go into an internal Go
-// package. The public API is in github.com/placeholderplaceholderplaceholder/opentf/plans/planfile .
-option go_package = "github.com/placeholderplaceholderplaceholder/opentf/internal/plans/internal/planproto";
+// For OpenTofu's own parsing, the proto stub types go into an internal Go
+// package. The public API is in github.com/opentofu/opentofu/plans/planfile .
+option go_package = "github.com/opentofu/opentofu/internal/plans/internal/planproto";
 
 // Plan is the root message type for the tfplan file
 message Plan {
@@ -22,9 +24,9 @@ message Plan {
 
     // The mode that was active when this plan was created.
     //
-    // This is saved only for UI purposes, so that OpenTF can tailor its
+    // This is saved only for UI purposes, so that OpenTofu can tailor its
     // rendering of the plan depending on the mode. This must never be used to
-    // make decisions in OpenTF Core during the applying of a plan.
+    // make decisions in OpenTofu Core during the applying of a plan.
     Mode ui_mode = 17;
 
     // Errored is true for any plan whose creation was interrupted by an
@@ -42,7 +44,7 @@ message Plan {
     repeated ResourceInstanceChange resource_changes = 3;
 
     // An unordered set of detected drift: changes made to resources outside of
-    // OpenTF, computed by comparing the previous run's state to the state
+    // OpenTofu, computed by comparing the previous run's state to the state
     // after refresh.
     repeated ResourceInstanceChange resource_drift = 18;
 
@@ -64,13 +66,18 @@ message Plan {
     // configuration.
     repeated string target_addrs = 5;
 
+    // An unordered set of exclude addresses to exclude when applying. If no
+    // target addresses are present, the plan applies to the whole
+    // configuration.
+    repeated string exclude_addrs = 6;
+
     // An unordered set of force-replace addresses to include when applying.
     // This must match the set of addresses that was used when creating the
     // plan, or else applying the plan will fail when it reaches a different
     // conclusion about what action a particular resource instance needs.
     repeated string force_replace_addrs = 16;
 
-    // The version string for the OpenTF binary that created this plan.
+    // The version string for the OpenTofu binary that created this plan.
     string terraform_version = 14;
 
     // Backend is a description of the backend configuration and other related
@@ -114,6 +121,7 @@ enum Action {
     DELETE = 5;
     DELETE_THEN_CREATE = 6;
     CREATE_THEN_DELETE = 7;
+    FORGET = 8;
 }
 
 // Change represents a change made to some object, transforming it from an old
@@ -183,14 +191,14 @@ message ResourceInstanceChange {
     // this resource instance was tracked during the previous apply operation.
     //
     // This is populated only if it would be different from addr due to
-    // OpenTF having reacted to refactoring annotations in the configuration.
+    // OpenTofu having reacted to refactoring annotations in the configuration.
     // If empty, the previous run address is the same as the current address.
     string prev_run_addr = 14;
 
     // NOTE: Earlier versions of this format had fields 1 through 6 describing
-    // various indivdual parts of "addr". We're now using our standard compact
+    // various individual parts of "addr". We're now using our standard compact
     // string representation to capture the same information. We don't support
-    // preserving plan files from one OpenTF version to the next, so we
+    // preserving plan files from one OpenTofu version to the next, so we
     // no longer declare nor accept those fields.
 
     // deposed_key, if set, indicates that this change applies to a deposed
@@ -204,7 +212,7 @@ message ResourceInstanceChange {
     string provider = 8;
 
     // Description of the proposed change. May use "create", "read", "update",
-    // "replace", "delete" and "no-op" actions.
+    // "replace", "delete", "forget" and "no-op" actions.
     Change change = 9;
 
     // raw blob value provided by the provider as additional context for the

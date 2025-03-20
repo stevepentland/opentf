@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -9,9 +11,9 @@ import (
 
 	"github.com/mitchellh/cli"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 // StateListCommand is a Command implementation that lists the resources
@@ -25,6 +27,7 @@ func (c *StateListCommand) Run(args []string) int {
 	args = c.Meta.process(args)
 	var statePath string
 	cmdFlags := c.Meta.defaultFlagSet("state list")
+	c.Meta.varFlagSet(cmdFlags)
 	cmdFlags.StringVar(&statePath, "state", "", "path")
 	lookupId := cmdFlags.String("id", "", "Restrict output to paths with a resource having the specified ID.")
 	if err := cmdFlags.Parse(args); err != nil {
@@ -37,8 +40,15 @@ func (c *StateListCommand) Run(args []string) int {
 		c.Meta.statePath = statePath
 	}
 
+	// Load the encryption configuration
+	enc, encDiags := c.Encryption()
+	if encDiags.HasErrors() {
+		c.showDiagnostics(encDiags)
+		return 1
+	}
+
 	// Load the backend
-	b, backendDiags := c.Backend(nil)
+	b, backendDiags := c.Backend(nil, enc.State())
 	if backendDiags.HasErrors() {
 		c.showDiagnostics(backendDiags)
 		return 1
@@ -96,11 +106,11 @@ func (c *StateListCommand) Run(args []string) int {
 
 func (c *StateListCommand) Help() string {
 	helpText := `
-Usage: opentf [global options] state list [options] [address...]
+Usage: tofu [global options] state (list|ls) [options] [address...]
 
-  List resources in the OpenTF state.
+  List resources in the OpenTofu state.
 
-  This command lists resource instances in the OpenTF state. The address
+  This command lists resource instances in the OpenTofu state. The address
   argument can be used to filter the instances by resource or module. If
   no pattern is given, all resource instances are listed.
 
@@ -116,14 +126,23 @@ Usage: opentf [global options] state list [options] [address...]
 
 Options:
 
-  -state=statefile    Path to a OpenTF state file to use to look
-                      up OpenTF-managed resources. By default, OpenTF
+  -state=statefile    Path to a OpenTofu state file to use to look
+                      up OpenTofu-managed resources. By default, OpenTofu
                       will consult the state of the currently-selected
                       workspace.
 
   -id=ID              Filters the results to include only instances whose
                       resource types have an attribute named "id" whose value
                       equals the given id string.
+
+  -var 'foo=bar'      Set a value for one of the input variables in the root
+                      module of the configuration. Use this option more than
+                      once to set more than one variable.
+
+  -var-file=filename  Load variable values from the given file, in addition
+                      to the default files terraform.tfvars and *.auto.tfvars.
+                      Use this option more than once to include more than one
+                      variables file.
 
 `
 	return strings.TrimSpace(helpText)
@@ -135,12 +154,12 @@ func (c *StateListCommand) Synopsis() string {
 
 const errStateLoadingState = `Error loading the state: %[1]s
 
-Please ensure that your OpenTF state exists and that you've
+Please ensure that your OpenTofu state exists and that you've
 configured it properly. You can use the "-state" flag to point
-OpenTF at another state file.`
+OpenTofu at another state file.`
 
 const errStateNotFound = `No state file was found!
 
 State management commands require a state file. Run this command
-in a directory where OpenTF has been run or use the -state flag
+in a directory where OpenTofu has been run or use the -state flag
 to point the command to a specific state location.`

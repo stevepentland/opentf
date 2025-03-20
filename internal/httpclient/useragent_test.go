@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package httpclient
@@ -8,16 +10,16 @@ import (
 	"os"
 	"testing"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/version"
 )
 
 func TestUserAgentString_env(t *testing.T) {
+
+	appendUaVal := os.Getenv(appendUaEnvVar)
+	os.Unsetenv(appendUaEnvVar)
+	defer os.Setenv(appendUaEnvVar, appendUaVal)
+
 	expectedBase := fmt.Sprintf("%s/%s", DefaultApplicationName, version.Version)
-	if oldenv, isSet := os.LookupEnv(appendUaEnvVar); isSet {
-		defer os.Setenv(appendUaEnvVar, oldenv)
-	} else {
-		defer os.Unsetenv(appendUaEnvVar)
-	}
 
 	for i, c := range []struct {
 		expected   string
@@ -33,13 +35,11 @@ func TestUserAgentString_env(t *testing.T) {
 		{fmt.Sprintf("%s test/4", expectedBase), "test/4 \n"},
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			if c.additional == "" {
-				os.Unsetenv(appendUaEnvVar)
-			} else {
-				os.Setenv(appendUaEnvVar, c.additional)
+			if c.additional != "" {
+				t.Setenv(appendUaEnvVar, c.additional)
 			}
 
-			actual := OpenTfUserAgent(version.Version)
+			actual := OpenTofuUserAgent(version.Version)
 
 			if c.expected != actual {
 				t.Fatalf("Expected User-Agent '%s' does not match '%s'", c.expected, actual)
@@ -49,13 +49,7 @@ func TestUserAgentString_env(t *testing.T) {
 }
 
 func TestUserAgentAppendViaEnvVar(t *testing.T) {
-	if oldenv, isSet := os.LookupEnv(appendUaEnvVar); isSet {
-		defer os.Setenv(appendUaEnvVar, oldenv)
-	} else {
-		defer os.Unsetenv(appendUaEnvVar)
-	}
-
-	expectedBase := "OpenTF/0.0.0"
+	expectedBase := "OpenTofu/0.0.0"
 
 	testCases := []struct {
 		envVarValue string
@@ -70,9 +64,8 @@ func TestUserAgentAppendViaEnvVar(t *testing.T) {
 
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			os.Unsetenv(appendUaEnvVar)
-			os.Setenv(appendUaEnvVar, tc.envVarValue)
-			givenUA := OpenTfUserAgent("0.0.0")
+			t.Setenv(appendUaEnvVar, tc.envVarValue)
+			givenUA := OpenTofuUserAgent("0.0.0")
 			if givenUA != tc.expected {
 				t.Fatalf("Expected User-Agent '%s' does not match '%s'", tc.expected, givenUA)
 			}
@@ -80,11 +73,10 @@ func TestUserAgentAppendViaEnvVar(t *testing.T) {
 	}
 }
 func TestCustomUserAgentViaEnvVar(t *testing.T) {
-	if oldenv, isSet := os.LookupEnv(customUaEnvVar); isSet {
-		defer os.Setenv(customUaEnvVar, oldenv)
-	} else {
-		defer os.Unsetenv(customUaEnvVar)
-	}
+
+	appendUaVal := os.Getenv(appendUaEnvVar)
+	os.Unsetenv(appendUaEnvVar)
+	defer os.Setenv(appendUaEnvVar, appendUaVal)
 
 	testCases := []struct {
 		envVarValue string
@@ -97,9 +89,8 @@ func TestCustomUserAgentViaEnvVar(t *testing.T) {
 
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			os.Unsetenv(customUaEnvVar)
-			os.Setenv(customUaEnvVar, tc.envVarValue)
-			givenUA := OpenTfUserAgent("0.0.0")
+			t.Setenv(customUaEnvVar, tc.envVarValue)
+			givenUA := OpenTofuUserAgent("0.0.0")
 			if givenUA != tc.envVarValue {
 				t.Fatalf("Expected User-Agent '%s' does not match '%s'", tc.envVarValue, givenUA)
 			}
@@ -107,36 +98,23 @@ func TestCustomUserAgentViaEnvVar(t *testing.T) {
 	}
 }
 func TestCustomUserAgentAndAppendViaEnvVar(t *testing.T) {
-	if oldenv, isSet := os.LookupEnv(appendUaEnvVar); isSet {
-		defer os.Setenv(appendUaEnvVar, oldenv)
-	} else {
-		defer os.Unsetenv(appendUaEnvVar)
-	}
-	if oldenv, isSet := os.LookupEnv(customUaEnvVar); isSet {
-		defer os.Setenv(customUaEnvVar, oldenv)
-	} else {
-		defer os.Unsetenv(customUaEnvVar)
-	}
-
 	testCases := []struct {
 		customUaValue string
 		appendUaValue string
 		expected      string
 	}{
-		{"", "", "OpenTF/0.0.0"},
-		{"", " ", "OpenTF/0.0.0"},
-		{"", " \n", "OpenTF/0.0.0"},
-		{"", "testy test", "OpenTF/0.0.0 testy test"},
-		{"opensource", "opentf", "opensource opentf"},
+		{"", "", "OpenTofu/0.0.0"},
+		{"", " ", "OpenTofu/0.0.0"},
+		{"", " \n", "OpenTofu/0.0.0"},
+		{"", "testy test", "OpenTofu/0.0.0 testy test"},
+		{"opensource", "opentofu", "opensource opentofu"},
 	}
 
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			os.Unsetenv(customUaEnvVar)
-			os.Unsetenv(appendUaEnvVar)
-			os.Setenv(customUaEnvVar, tc.customUaValue)
-			os.Setenv(appendUaEnvVar, tc.appendUaValue)
-			givenUA := OpenTfUserAgent("0.0.0")
+			t.Setenv(customUaEnvVar, tc.customUaValue)
+			t.Setenv(appendUaEnvVar, tc.appendUaValue)
+			givenUA := OpenTofuUserAgent("0.0.0")
 			if givenUA != tc.expected {
 				t.Fatalf("Expected User-Agent '%s' does not match '%s'", tc.expected, givenUA)
 			}

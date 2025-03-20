@@ -1,11 +1,13 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -15,11 +17,11 @@ import (
 	"github.com/mitchellh/cli"
 	"github.com/zclconf/go-cty/cty"
 
-	testing_command "github.com/placeholderplaceholderplaceholder/opentf/internal/command/testing"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
+	testing_command "github.com/opentofu/opentofu/internal/command/testing"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/terminal"
 )
 
 func setupTest(t *testing.T, fixturepath string, args ...string) (*terminal.TestOutput, int) {
@@ -120,7 +122,7 @@ func TestValidateFailingCommandMissingVariable(t *testing.T) {
 	}
 }
 
-func TestSameProviderMutipleTimesShouldFail(t *testing.T) {
+func TestSameProviderMultipleTimesShouldFail(t *testing.T) {
 	output, code := setupTest(t, "validate-invalid/multiple_providers")
 	if code != 1 {
 		t.Fatalf("Should have failed: %d\n\n%s", code, output.Stderr())
@@ -189,10 +191,6 @@ func TestModuleWithIncorrectNameShouldFail(t *testing.T) {
 	if !strings.Contains(output.Stderr(), wantError) {
 		t.Fatalf("Missing error string %q\n\n'%s'", wantError, output.Stderr())
 	}
-	wantError = `Error: Variables not allowed`
-	if !strings.Contains(output.Stderr(), wantError) {
-		t.Fatalf("Missing error string %q\n\n'%s'", wantError, output.Stderr())
-	}
 }
 
 func TestWronglyUsedInterpolationShouldFail(t *testing.T) {
@@ -223,7 +221,7 @@ func TestMissingDefinedVar(t *testing.T) {
 func TestValidateWithInvalidTestFile(t *testing.T) {
 
 	// We're reusing some testing configs that were written for testing the
-	// test command here, so we have to initalise things slightly differently
+	// test command here, so we have to initialise things slightly differently
 	// to the other tests.
 
 	view, done := testView(t)
@@ -255,7 +253,7 @@ func TestValidateWithInvalidTestFile(t *testing.T) {
 func TestValidateWithInvalidTestModule(t *testing.T) {
 
 	// We're reusing some testing configs that were written for testing the
-	// test command here, so we have to initalise things slightly differently
+	// test command here, so we have to initialise things slightly differently
 	// to the other tests.
 
 	td := t.TempDir()
@@ -337,7 +335,7 @@ func TestValidate_json(t *testing.T) {
 				t.Fatalf("failed to open output file: %s", err)
 			}
 			defer wantFile.Close()
-			wantBytes, err := ioutil.ReadAll(wantFile)
+			wantBytes, err := io.ReadAll(wantFile)
 			if err != nil {
 				t.Fatalf("failed to read output file: %s", err)
 			}

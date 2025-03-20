@@ -1,11 +1,13 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package convert
 
 import (
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
-	proto "github.com/placeholderplaceholderplaceholder/opentf/internal/tfplugin6"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	proto "github.com/opentofu/opentofu/internal/tfplugin6"
 	"github.com/zclconf/go-cty/cty"
 )
 

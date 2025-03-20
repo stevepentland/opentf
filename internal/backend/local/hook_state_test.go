@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package local
@@ -9,25 +11,25 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 func TestStateHook_impl(t *testing.T) {
-	var _ opentf.Hook = new(StateHook)
+	var _ tofu.Hook = new(StateHook)
 }
 
 func TestStateHook(t *testing.T) {
 	is := statemgr.NewTransientInMemory(nil)
-	var hook opentf.Hook = &StateHook{StateMgr: is}
+	var hook tofu.Hook = &StateHook{StateMgr: is}
 
 	s := statemgr.TestFullInitialState()
 	action, err := hook.PostStateUpdate(s)
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
-	if action != opentf.HookActionContinue {
+	if action != tofu.HookActionContinue {
 		t.Fatalf("bad: %v", action)
 	}
 	if !is.State().Equal(s) {
@@ -39,7 +41,7 @@ func TestStateHookStopping(t *testing.T) {
 	is := &testPersistentState{}
 	hook := &StateHook{
 		StateMgr:        is,
-		Schemas:         &opentf.Schemas{},
+		Schemas:         &tofu.Schemas{},
 		PersistInterval: 4 * time.Hour,
 		intermediatePersist: IntermediateStatePersistInfo{
 			LastPersist: time.Now(),
@@ -51,7 +53,7 @@ func TestStateHookStopping(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error from PostStateUpdate: %s", err)
 	}
-	if got, want := action, opentf.HookActionContinue; got != want {
+	if got, want := action, tofu.HookActionContinue; got != want {
 		t.Fatalf("wrong hookaction %#v; want %#v", got, want)
 	}
 	if is.Written == nil || !is.Written.Equal(s) {
@@ -138,7 +140,7 @@ func TestStateHookCustomPersistRule(t *testing.T) {
 	is := &testPersistentStateThatRefusesToPersist{}
 	hook := &StateHook{
 		StateMgr:        is,
-		Schemas:         &opentf.Schemas{},
+		Schemas:         &tofu.Schemas{},
 		PersistInterval: 4 * time.Hour,
 		intermediatePersist: IntermediateStatePersistInfo{
 			LastPersist: time.Now(),
@@ -150,7 +152,7 @@ func TestStateHookCustomPersistRule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error from PostStateUpdate: %s", err)
 	}
-	if got, want := action, opentf.HookActionContinue; got != want {
+	if got, want := action, tofu.HookActionContinue; got != want {
 		t.Fatalf("wrong hookaction %#v; want %#v", got, want)
 	}
 	if is.Written == nil || !is.Written.Equal(s) {
@@ -255,7 +257,7 @@ func (sm *testPersistentState) WriteState(state *states.State) error {
 	return nil
 }
 
-func (sm *testPersistentState) PersistState(schemas *opentf.Schemas) error {
+func (sm *testPersistentState) PersistState(schemas *tofu.Schemas) error {
 	if schemas == nil {
 		return fmt.Errorf("no schemas")
 	}
@@ -281,7 +283,7 @@ func (sm *testPersistentStateThatRefusesToPersist) WriteState(state *states.Stat
 	return nil
 }
 
-func (sm *testPersistentStateThatRefusesToPersist) PersistState(schemas *opentf.Schemas) error {
+func (sm *testPersistentStateThatRefusesToPersist) PersistState(schemas *tofu.Schemas) error {
 	if schemas == nil {
 		return fmt.Errorf("no schemas")
 	}

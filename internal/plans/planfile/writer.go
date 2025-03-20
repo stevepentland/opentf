@@ -1,18 +1,22 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package planfile
 
 import (
 	"archive/zip"
+	"bytes"
 	"fmt"
 	"os"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configload"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/depsfile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/configs/configload"
+	"github.com/opentofu/opentofu/internal/depsfile"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/states/statefile"
 )
 
 type CreateArgs struct {
@@ -48,18 +52,12 @@ type CreateArgs struct {
 // file that might already exist there.
 //
 // A plan file contains both a snapshot of the configuration and of the latest
-// state file in addition to the plan itself, so that OpenTF can detect
+// state file in addition to the plan itself, so that OpenTofu can detect
 // if the world has changed since the plan was created and thus refuse to
 // apply it.
-func Create(filename string, args CreateArgs) error {
-	f, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	zw := zip.NewWriter(f)
-	defer zw.Close()
+func Create(filename string, args CreateArgs, enc encryption.PlanEncryption) error {
+	buff := bytes.NewBuffer(make([]byte, 0))
+	zw := zip.NewWriter(buff)
 
 	// tfplan file
 	{
@@ -69,11 +67,11 @@ func Create(filename string, args CreateArgs) error {
 			Modified: time.Now(),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create tfplan file: %s", err)
+			return fmt.Errorf("failed to create tfplan file: %w", err)
 		}
 		err = writeTfplan(args.Plan, w)
 		if err != nil {
-			return fmt.Errorf("failed to write plan: %s", err)
+			return fmt.Errorf("failed to write plan: %w", err)
 		}
 	}
 
@@ -85,11 +83,11 @@ func Create(filename string, args CreateArgs) error {
 			Modified: time.Now(),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create embedded tfstate file: %s", err)
+			return fmt.Errorf("failed to create embedded tfstate file: %w", err)
 		}
-		err = statefile.Write(args.StateFile, w)
+		err = statefile.Write(args.StateFile, w, encryption.StateEncryptionDisabled())
 		if err != nil {
-			return fmt.Errorf("failed to write state snapshot: %s", err)
+			return fmt.Errorf("failed to write state snapshot: %w", err)
 		}
 	}
 
@@ -101,11 +99,11 @@ func Create(filename string, args CreateArgs) error {
 			Modified: time.Now(),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create embedded tfstate-prev file: %s", err)
+			return fmt.Errorf("failed to create embedded tfstate-prev file: %w", err)
 		}
-		err = statefile.Write(args.PreviousRunStateFile, w)
+		err = statefile.Write(args.PreviousRunStateFile, w, encryption.StateEncryptionDisabled())
 		if err != nil {
-			return fmt.Errorf("failed to write previous state snapshot: %s", err)
+			return fmt.Errorf("failed to write previous state snapshot: %w", err)
 		}
 	}
 
@@ -113,7 +111,7 @@ func Create(filename string, args CreateArgs) error {
 	{
 		err := writeConfigSnapshot(args.ConfigSnapshot, zw)
 		if err != nil {
-			return fmt.Errorf("failed to write config snapshot: %s", err)
+			return fmt.Errorf("failed to write config snapshot: %w", err)
 		}
 	}
 
@@ -121,7 +119,7 @@ func Create(filename string, args CreateArgs) error {
 	if args.DependencyLocks != nil { // (this was a later addition, so not all callers set it, but main callers should)
 		src, diags := depsfile.SaveLocksToBytes(args.DependencyLocks)
 		if diags.HasErrors() {
-			return fmt.Errorf("failed to write embedded dependency lock file: %s", diags.Err().Error())
+			return fmt.Errorf("failed to write embedded dependency lock file: %w", diags.Err())
 		}
 
 		w, err := zw.CreateHeader(&zip.FileHeader{
@@ -130,13 +128,20 @@ func Create(filename string, args CreateArgs) error {
 			Modified: time.Now(),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create embedded dependency lock file: %s", err)
+			return fmt.Errorf("failed to create embedded dependency lock file: %w", err)
 		}
 		_, err = w.Write(src)
 		if err != nil {
-			return fmt.Errorf("failed to write embedded dependency lock file: %s", err)
+			return fmt.Errorf("failed to write embedded dependency lock file: %w", err)
 		}
 	}
 
-	return nil
+	// Finish zip file
+	zw.Close()
+	// Encrypt payload
+	encrypted, err := enc.EncryptPlan(buff.Bytes())
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filename, encrypted, 0644)
 }

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -10,9 +12,9 @@ import (
 
 	"github.com/xlab/treeprint"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/getproviders"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/getproviders"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 // ProvidersCommand is a Command implementation that prints out information
@@ -34,6 +36,7 @@ func (c *ProvidersCommand) Run(args []string) int {
 
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.defaultFlagSet("providers")
+	c.Meta.varFlagSet(cmdFlags)
 	cmdFlags.StringVar(&testsDirectory, "test-directory", "tests", "test-directory")
 	cmdFlags.Usage = func() { c.Ui.Error(c.Help()) }
 	if err := cmdFlags.Parse(args); err != nil {
@@ -41,7 +44,7 @@ func (c *ProvidersCommand) Run(args []string) int {
 		return 1
 	}
 
-	configPath, err := ModulePath(cmdFlags.Args())
+	configPath, err := modulePath(cmdFlags.Args())
 	if err != nil {
 		c.Ui.Error(err.Error())
 		return 1
@@ -54,7 +57,7 @@ func (c *ProvidersCommand) Run(args []string) int {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Error validating configuration directory",
-			fmt.Sprintf("OpenTF encountered an unexpected error while verifying that the given configuration directory is valid: %s.", err),
+			fmt.Sprintf("OpenTofu encountered an unexpected error while verifying that the given configuration directory is valid: %s.", err),
 		))
 		c.showDiagnostics(diags)
 		return 1
@@ -67,7 +70,7 @@ func (c *ProvidersCommand) Run(args []string) int {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"No configuration files",
-			fmt.Sprintf("The directory %s contains no OpenTF configuration files.", absPath),
+			fmt.Sprintf("The directory %s contains no OpenTofu configuration files.", absPath),
 		))
 		c.showDiagnostics(diags)
 		return 1
@@ -80,10 +83,18 @@ func (c *ProvidersCommand) Run(args []string) int {
 		return 1
 	}
 
+	// Load the encryption configuration
+	enc, encDiags := c.EncryptionFromPath(configPath)
+	diags = diags.Append(encDiags)
+	if encDiags.HasErrors() {
+		c.showDiagnostics(diags)
+		return 1
+	}
+
 	// Load the backend
 	b, backendDiags := c.Backend(&BackendOpts{
 		Config: config.Module.Backend,
-	})
+	}, enc.State())
 	diags = diags.Append(backendDiags)
 	if backendDiags.HasErrors() {
 		c.showDiagnostics(diags)
@@ -175,7 +186,7 @@ func (c *ProvidersCommand) populateTreeNode(tree treeprint.Tree, node *configs.M
 }
 
 const providersCommandHelp = `
-Usage: opentf [global options] providers [options] [DIR]
+Usage: tofu [global options] providers [options] [DIR]
 
   Prints out a tree of modules in the referenced configuration annotated with
   their provider requirements.
@@ -186,5 +197,16 @@ Usage: opentf [global options] providers [options] [DIR]
 
 Options:
 
-  -test-directory=path	Set the OpenTF test directory, defaults to "tests".
+  -test-directory=path  Set the OpenTofu test directory, defaults to "tests". When set, the
+                        test command will search for test files in the current directory and
+                        in the one specified by the flag.
+
+  -var 'foo=bar'        Set a value for one of the input variables in the root
+                        module of the configuration. Use this option more than
+                        once to set more than one variable.
+
+  -var-file=filename    Load variable values from the given file, in addition
+                        to the default files terraform.tfvars and *.auto.tfvars.
+                        Use this option more than once to include more than one
+                        variables file.
 `

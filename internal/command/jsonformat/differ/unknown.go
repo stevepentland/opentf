@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package differ
@@ -6,10 +8,10 @@ package differ
 import (
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/computed"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/computed/renderers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/structured"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonprovider"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/computed"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/computed/renderers"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/structured"
+	"github.com/opentofu/opentofu/internal/command/jsonprovider"
 )
 
 func checkForUnknownType(change structured.Change, ctype cty.Type) (computed.Diff, bool) {
@@ -22,7 +24,6 @@ func checkForUnknownType(change structured.Change, ctype cty.Type) (computed.Dif
 }
 
 func checkForUnknownNestedAttribute(change structured.Change, attribute *jsonprovider.NestedType) (computed.Diff, bool) {
-
 	// We want our child attributes to show up as computed instead of deleted.
 	// Let's populate that here.
 	childUnknown := make(map[string]interface{})
@@ -39,7 +40,6 @@ func checkForUnknownNestedAttribute(change structured.Change, attribute *jsonpro
 }
 
 func checkForUnknownBlock(change structured.Change, block *jsonprovider.Block) (computed.Diff, bool) {
-
 	// We want our child attributes to show up as computed instead of deleted.
 	// Let's populate that here.
 	childUnknown := make(map[string]interface{})

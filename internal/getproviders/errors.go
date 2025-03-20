@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package getproviders
@@ -9,7 +11,7 @@ import (
 
 	svchost "github.com/hashicorp/terraform-svchost"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 )
 
 // ErrHostNoProviders is an error type used to indicate that a hostname given
@@ -17,22 +19,22 @@ import (
 type ErrHostNoProviders struct {
 	Hostname svchost.Hostname
 
-	// HasOtherVersionis set to true if the discovery process detected
+	// HasOtherVersion is set to true if the discovery process detected
 	// declarations of services named "providers" whose version numbers did not
-	// match any version supported by the current version of Terraform.
+	// match any version supported by the current version of OpenTofu.
 	//
 	// If this is set, it's helpful to hint to the user in an error message
 	// that the provider host may be expecting an older or a newer version
-	// of Terraform, rather than that it isn't a provider registry host at all.
+	// of OpenTofu, rather than that it isn't a provider registry host at all.
 	HasOtherVersion bool
 }
 
 func (err ErrHostNoProviders) Error() string {
 	switch {
 	case err.HasOtherVersion:
-		return fmt.Sprintf("host %s does not support the provider registry protocol required by this OpenTF version, but may be compatible with a different OpenTF version", err.Hostname.ForDisplay())
+		return fmt.Sprintf("host %s does not support the provider registry protocol required by this OpenTofu version, but may be compatible with a different OpenTofu version", err.Hostname.ForDisplay())
 	default:
-		return fmt.Sprintf("host %s does not offer a OpenTF provider registry", err.Hostname.ForDisplay())
+		return fmt.Sprintf("host %s does not offer a OpenTofu provider registry", err.Hostname.ForDisplay())
 	}
 }
 
@@ -100,7 +102,7 @@ func (err ErrProviderNotFound) Error() string {
 // A caller serving requests from an end-user should recognize this error type
 // and use it to produce user-friendly hints for common errors such as failing
 // to specify an explicit source for a provider not in the default namespace
-// (one not under registry.terraform.io/hashicorp/). The default error message
+// (one not under registry.opentofu.org/hashicorp/). The default error message
 // for this type is a direct description of the problem with no such hints,
 // because we expect that the caller will have better context to decide what
 // hints are appropriate, e.g. by looking at the configuration given by the
@@ -154,9 +156,9 @@ func (err ErrPlatformNotSupported) Error() string {
 }
 
 // ErrProtocolNotSupported is an error type used to indicate that a particular
-// version of a provider is not supported by the current version of Terraform.
+// version of a provider is not supported by the current version of OpenTofu.
 //
-// Specfically, this is returned when the version's plugin protocol is not supported.
+// Specifically, this is returned when the version's plugin protocol is not supported.
 //
 // When available, the error will include a suggested version that can be displayed to
 // the user. Otherwise it will return UnspecifiedVersion
@@ -168,7 +170,7 @@ type ErrProtocolNotSupported struct {
 
 func (err ErrProtocolNotSupported) Error() string {
 	return fmt.Sprintf(
-		"provider %s %s is not supported by this version of OpenTF",
+		"provider %s %s is not supported by this version of OpenTofu",
 		err.Provider,
 		err.Version,
 	)
@@ -180,7 +182,7 @@ func (err ErrProtocolNotSupported) Error() string {
 // unexpected error.
 //
 // This is used for any error responses other than "Not Found", which would
-// indicate the absense of a provider and is thus reported using
+// indicate the absence of a provider and is thus reported using
 // ErrProviderNotKnown instead.
 type ErrQueryFailed struct {
 	Provider addrs.Provider

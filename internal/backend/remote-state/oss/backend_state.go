@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package oss
@@ -14,10 +16,10 @@ import (
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/aliyun/aliyun-tablestore-go-sdk/tablestore"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/remote"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/remote"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
 )
 
 const (
@@ -45,7 +47,7 @@ func (b *Backend) remoteClient(name string) (*RemoteClient, error) {
 			TableName: b.otsTable,
 		})
 		if err != nil {
-			return client, fmt.Errorf("error describing table store %s: %#v", b.otsTable, err)
+			return client, fmt.Errorf("error describing table store %s: %w", b.otsTable, err)
 		}
 	}
 
@@ -55,7 +57,7 @@ func (b *Backend) remoteClient(name string) (*RemoteClient, error) {
 func (b *Backend) Workspaces() ([]string, error) {
 	bucket, err := b.ossClient.Bucket(b.bucketName)
 	if err != nil {
-		return []string{""}, fmt.Errorf("error getting bucket: %#v", err)
+		return []string{""}, fmt.Errorf("error getting bucket: %w", err)
 	}
 
 	var options []oss.Option
@@ -70,7 +72,7 @@ func (b *Backend) Workspaces() ([]string, error) {
 	lastObj := ""
 	for {
 		for _, obj := range resp.Objects {
-			// we have 3 parts, the state prefix, the workspace name, and the state file: <prefix>/<worksapce-name>/<key>
+			// we have 3 parts, the state prefix, the workspace name, and the state file: <prefix>/<workspace-name>/<key>
 			if path.Join(b.statePrefix, b.stateKey) == obj.Key {
 				// filter the default workspace
 				continue
@@ -116,7 +118,7 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 	if err != nil {
 		return nil, err
 	}
-	stateMgr := &remote.State{Client: client}
+	stateMgr := remote.NewState(client, b.encryption)
 
 	// Check to see if this state already exists.
 	existing, err := b.Workspaces()
@@ -140,7 +142,7 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 		lockInfo.Operation = "init"
 		lockId, err := client.Lock(lockInfo)
 		if err != nil {
-			return nil, fmt.Errorf("failed to lock OSS state: %s", err)
+			return nil, fmt.Errorf("failed to lock OSS state: %w", err)
 		}
 
 		// Local helper function so we can call it multiple places
@@ -193,7 +195,7 @@ const stateUnlockError = `
 Error unlocking Alibaba Cloud OSS state file:
 
 Lock ID: %s
-Error message: %#v
+Error message: %w
 
 You may have to force-unlock this state in order to use it again.
 The Alibaba Cloud backend acquires a lock during initialization to ensure the initial state file is created.

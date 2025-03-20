@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package refactoring
@@ -6,10 +8,10 @@ package refactoring
 import (
 	"fmt"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 type MoveStatement struct {
@@ -135,7 +137,7 @@ func impliedMoveStatements(cfg *configs.Config, prevRunState *states.State, expl
 			}
 
 			if fromKey != toKey {
-				// We mustn't generate an impied statement if the user already
+				// We mustn't generate an implied statement if the user already
 				// wrote an explicit statement referring to this resource,
 				// because they may wish to select an instance key other than
 				// zero as the one to retain.
@@ -174,7 +176,7 @@ func haveMoveStatementForResource(addr addrs.AbsResource, stmts []MoveStatement)
 	// This is not a particularly optimal way to answer this question,
 	// particularly since our caller calls this function in a loop already,
 	// but we expect the total number of explicit statements to be small
-	// in any reasonable Terraform configuration and so a more complicated
+	// in any reasonable OpenTofu configuration and so a more complicated
 	// approach wouldn't be justified here.
 
 	for _, stmt := range stmts {

@@ -1,5 +1,5 @@
 // statelocker use used for testing command with a locked state.
-// This will lock the state file at a given path, then wait for a sigal. On
+// This will lock the state file at a given path, then wait for a signal. On
 // SIGINT and SIGTERM the state will be Unlocked before exit.
 package main
 
@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/clistate"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/command/clistate"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
 )
 
 func main() {

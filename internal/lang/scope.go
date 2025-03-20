@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package lang
@@ -10,9 +12,9 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty/function"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/experiments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/experiments"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 type ParseRef func(traversal hcl.Traversal) (*addrs.Reference, tfdiags.Diagnostics)
@@ -27,7 +29,7 @@ type Scope struct {
 	// ParseRef is a function that the scope uses to extract references from
 	// a hcl.Traversal. This controls the type of references the scope currently
 	// supports. As an example, the testing scope can reference outputs directly
-	// while the main OpenTF context scope can not. This means that this
+	// while the main OpenTofu context scope can not. This means that this
 	// function for the testing scope will happily return outputs, while the
 	// main context scope would fail if a user attempts to reference an output.
 	ParseRef ParseRef
@@ -54,8 +56,8 @@ type Scope struct {
 	// then differ during apply.
 	PureOnly bool
 
-	funcs     map[string]function.Function
 	funcsLock sync.Mutex
+	funcs     map[string]function.Function
 
 	// activeExperiments is an optional set of experiments that should be
 	// considered as active in the module that this scope will be used for.
@@ -69,7 +71,11 @@ type Scope struct {
 	// PlanTimestamp is a timestamp representing when the plan was made. It will
 	// either have been generated during this operation or read from the plan.
 	PlanTimestamp time.Time
+
+	ProviderFunctions ProviderFunction
 }
+
+type ProviderFunction func(addrs.ProviderFunction, tfdiags.SourceRange) (*function.Function, tfdiags.Diagnostics)
 
 // SetActiveExperiments allows a caller to declare that a set of experiments
 // is active for the module that the receiving Scope belongs to, which might

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package providers
@@ -6,7 +8,7 @@ package providers
 import (
 	"sync"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 )
 
 // SchemaCache is a global cache of Schemas.
@@ -38,4 +40,10 @@ func (c *schemaCache) Get(p addrs.Provider) (ProviderSchema, bool) {
 
 	s, ok := c.m[p]
 	return s, ok
+}
+
+func (c *schemaCache) Remove(p addrs.Provider) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.m, p)
 }

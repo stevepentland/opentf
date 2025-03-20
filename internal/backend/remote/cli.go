@@ -1,10 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package remote
 
 import (
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
+	"github.com/opentofu/opentofu/internal/backend"
 )
 
 // CLIInit implements backend.CLI

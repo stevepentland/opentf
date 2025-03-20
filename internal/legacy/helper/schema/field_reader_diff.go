@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package schema
@@ -7,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mitchellh/mapstructure"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/opentf"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/opentofu/opentofu/internal/legacy/tofu"
 )
 
 // DiffFieldReader reads fields out of a diff structures.
@@ -29,7 +31,7 @@ import (
 // It cannot be determined whether a retrieved value is composed of
 // diff elements.
 type DiffFieldReader struct {
-	Diff   *opentf.InstanceDiff
+	Diff   *tofu.InstanceDiff
 	Source FieldReader
 	Schema map[string]*Schema
 

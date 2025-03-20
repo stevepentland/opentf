@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -21,7 +23,7 @@ import (
 	"github.com/bgentry/speakeasy"
 	"github.com/mattn/go-isatty"
 	"github.com/mitchellh/colorstring"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 var defaultInputReader io.Reader
@@ -29,7 +31,7 @@ var defaultInputWriter io.Writer
 var testInputResponse []string
 var testInputResponseMap map[string]string
 
-// UIInput is an implementation of terraform.UIInput that asks the CLI
+// UIInput is an implementation of tofu.UIInput that asks the CLI
 // for input stdin.
 type UIInput struct {
 	// Colorize will color the output.
@@ -49,7 +51,7 @@ type UIInput struct {
 	once        sync.Once
 }
 
-func (i *UIInput) Input(ctx context.Context, opts *opentf.InputOpts) (string, error) {
+func (i *UIInput) Input(ctx context.Context, opts *tofu.InputOpts) (string, error) {
 	i.once.Do(i.init)
 
 	r := i.Reader
@@ -67,7 +69,7 @@ func (i *UIInput) Input(ctx context.Context, opts *opentf.InputOpts) (string, er
 		w = os.Stdout
 	}
 
-	// Make sure we only ask for input once at a time. Terraform
+	// Make sure we only ask for input once at a time. OpenTofu
 	// should enforce this, but it doesn't hurt to verify.
 	i.l.Lock()
 	defer i.l.Unlock()

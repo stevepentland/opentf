@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package cloud
@@ -10,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -22,13 +23,13 @@ import (
 	tfe "github.com/hashicorp/go-tfe"
 	version "github.com/hashicorp/go-version"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/cloud/cloudplan"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/genconfig"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/cloud/cloudplan"
+	"github.com/opentofu/opentofu/internal/command/jsonformat"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/genconfig"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 var planConfigurationVersionsPollInterval = 500 * time.Millisecond
@@ -52,7 +53,7 @@ func (b *Cloud) opPlan(stopCtx, cancelCtx context.Context, op *backend.Operation
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Custom parallelism values are currently not supported",
-			`Terraform Cloud does not support setting a custom parallelism `+
+			`Cloud backend does not support setting a custom parallelism `+
 				`value at this time.`,
 		))
 	}
@@ -61,7 +62,7 @@ func (b *Cloud) opPlan(stopCtx, cancelCtx context.Context, op *backend.Operation
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Displaying a saved plan is currently not supported",
-			`Terraform Cloud currently requires configuration to be present and `+
+			`Cloud backend currently requires configuration to be present and `+
 				`does not accept an existing saved plan as an argument at this time.`,
 		))
 	}
@@ -74,7 +75,15 @@ func (b *Cloud) opPlan(stopCtx, cancelCtx context.Context, op *backend.Operation
 				`would mark everything for destruction, which is normally not what is desired. `+
 				`If you would like to destroy everything, please run plan with the "-destroy" `+
 				`flag or create a single empty configuration file. Otherwise, please create `+
-				`a OpenTF configuration file in the path being executed and try again.`,
+				`a OpenTofu configuration file in the path being executed and try again.`,
+		))
+	}
+
+	if len(op.Excludes) != 0 {
+		diags = diags.Append(tfdiags.Sourceless(
+			tfdiags.Error,
+			"-exclude option is not supported",
+			"The -exclude option is not currently supported for remote plans.",
 		))
 	}
 
@@ -102,7 +111,7 @@ func (b *Cloud) opPlan(stopCtx, cancelCtx context.Context, op *backend.Operation
 		}
 	}
 
-	// Everything succeded, so display next steps
+	// Everything succeeded, so display next steps
 	op.View.PlanNextStep(op.PlanOutPath, op.GenerateConfigOut)
 
 	return run, nil
@@ -117,7 +126,7 @@ func (b *Cloud) plan(stopCtx, cancelCtx context.Context, op *backend.Operation, 
 		b.CLI.Output(b.Colorize().Color(strings.TrimSpace(header) + "\n"))
 	}
 
-	// Plan-only means they ran terraform plan without -out.
+	// Plan-only means they ran tofu plan without -out.
 	provisional := op.PlanOutPath != ""
 	planOnly := op.Type == backend.OperationTypePlan && !provisional
 
@@ -160,7 +169,7 @@ func (b *Cloud) plan(stopCtx, cancelCtx context.Context, op *backend.Operation, 
 The remote workspace is configured to work with configuration at
 %s relative to the target repository.
 
-OpenTF will upload the contents of the following directory,
+OpenTofu will upload the contents of the following directory,
 excluding files or directories as defined by a .terraformignore file
 at %s/.terraformignore (if it is present),
 in order to capture the filesystem context the remote workspace expects:
@@ -173,7 +182,7 @@ in order to capture the filesystem context the remote workspace expects:
 		// We did a check earlier to make sure we either have a config dir,
 		// or the plan is run with -destroy. So this else clause will only
 		// be executed when we are destroying and doesn't need the config.
-		configDir, err = ioutil.TempDir("", "tf")
+		configDir, err = os.MkdirTemp("", "tf")
 		if err != nil {
 			return nil, generalError("Failed to create temporary directory", err)
 		}
@@ -237,7 +246,7 @@ in order to capture the filesystem context the remote workspace expects:
 		// field.
 		return nil, generalError(
 			"Invalid plan mode",
-			fmt.Errorf("Terraform Cloud doesn't support %s", op.PlanMode),
+			fmt.Errorf("Cloud backend doesn't support %s", op.PlanMode),
 		)
 	}
 
@@ -255,7 +264,7 @@ in order to capture the filesystem context the remote workspace expects:
 		}
 	}
 
-	config, _, configDiags := op.ConfigLoader.LoadConfigWithSnapshot(op.ConfigDir)
+	config, _, configDiags := op.ConfigLoader.LoadConfigWithSnapshot(op.ConfigDir, op.RootCall)
 	if configDiags.HasErrors() {
 		return nil, fmt.Errorf("error loading config with snapshot: %w", configDiags.Errs()[0])
 	}
@@ -306,7 +315,7 @@ in order to capture the filesystem context the remote workspace expects:
 						b.CLI.Output(b.Colorize().Color(strings.TrimSpace(lockTimeoutErr)))
 					}
 
-					// We abuse the auto aprove flag to indicate that we do not
+					// We abuse the auto approve flag to indicate that we do not
 					// want to ask if the remote operation should be canceled.
 					op.AutoApprove = true
 
@@ -400,7 +409,7 @@ func (b *Cloud) AssertImportCompatible(config *configs.Config) error {
 		// First, check the remote API version is high enough.
 		currentAPIVersion, err := version.NewVersion(b.client.RemoteAPIVersion())
 		if err != nil {
-			return fmt.Errorf("Error parsing remote API version. To proceed, please remove any import blocks from your config. Please report the following error to the OpenTF team: %s", err)
+			return fmt.Errorf("Error parsing remote API version. To proceed, please remove any import blocks from your config. Please report the following error to the OpenTofu team: %w", err)
 		}
 		desiredAPIVersion, _ := version.NewVersion("2.6")
 		if currentAPIVersion.LessThan(desiredAPIVersion) {
@@ -410,15 +419,15 @@ func (b *Cloud) AssertImportCompatible(config *configs.Config) error {
 		// Second, check the agent version is high enough.
 		agentEnv, isSet := os.LookupEnv("TFC_AGENT_VERSION")
 		if !isSet {
-			return fmt.Errorf("Error reading TFC agent version. To proceed, please remove any import blocks from your config. Please report the following error to the OpenTF team: TFC_AGENT_VERSION not present.")
+			return fmt.Errorf("Error reading TFC agent version. To proceed, please remove any import blocks from your config. Please report the following error to the OpenTofu team: TFC_AGENT_VERSION not present.")
 		}
 		currentAgentVersion, err := version.NewVersion(agentEnv)
 		if err != nil {
-			return fmt.Errorf("Error parsing TFC agent version. To proceed, please remove any import blocks from your config. Please report the following error to the OpenTF team: %s", err)
+			return fmt.Errorf("Error parsing TFC agent version. To proceed, please remove any import blocks from your config. Please report the following error to the OpenTofu team: %w", err)
 		}
 		desiredAgentVersion, _ := version.NewVersion("1.10")
 		if currentAgentVersion.LessThan(desiredAgentVersion) {
-			return fmt.Errorf("Import blocks are not supported in this version of the Terraform Cloud Agent. You are using agent version %s, but this feature requires version %s. Please remove any import blocks from your config or upgrade your agent.", currentAgentVersion, desiredAgentVersion)
+			return fmt.Errorf("Import blocks are not supported in this version of the cloud backend Agent. You are using agent version %s, but this feature requires version %s. Please remove any import blocks from your config or upgrade your agent.", currentAgentVersion, desiredAgentVersion)
 		}
 	}
 	return nil
@@ -621,7 +630,7 @@ func shouldGenerateConfig(out string, run *tfe.Run) bool {
 }
 
 const planDefaultHeader = `
-[reset][yellow]Running plan in Terraform Cloud. Output will stream here. Pressing Ctrl-C
+[reset][yellow]Running plan in cloud backend. Output will stream here. Pressing Ctrl-C
 will stop streaming the logs, but will not stop the plan running remotely.[reset]
 
 Preparing the remote plan...

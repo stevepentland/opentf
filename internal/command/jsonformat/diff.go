@@ -1,15 +1,17 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package jsonformat
 
 import (
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/computed"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/differ"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/structured"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/structured/attribute_path"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonplan"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/computed"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/differ"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/structured"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/structured/attribute_path"
+	"github.com/opentofu/opentofu/internal/command/jsonplan"
+	"github.com/opentofu/opentofu/internal/plans"
 )
 
 func precomputeDiffs(plan Plan, mode plans.Mode) diffs {

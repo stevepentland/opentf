@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package jsonformat
@@ -10,18 +12,18 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/mitchellh/colorstring"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonprovider"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonstate"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
+	"github.com/opentofu/opentofu/internal/command/jsonprovider"
+	"github.com/opentofu/opentofu/internal/command/jsonstate"
+	"github.com/opentofu/opentofu/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/terminal"
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 func TestState(t *testing.T) {
@@ -29,12 +31,12 @@ func TestState(t *testing.T) {
 
 	tests := []struct {
 		State   *states.State
-		Schemas *opentf.Schemas
+		Schemas *tofu.Schemas
 		Want    string
 	}{
 		{
 			State:   &states.State{},
-			Schemas: &opentf.Schemas{},
+			Schemas: &tofu.Schemas{},
 			Want:    "The state file is empty. No resources are represented.\n",
 		},
 		{
@@ -98,8 +100,8 @@ func TestState(t *testing.T) {
 	}
 }
 
-func testProvider() *opentf.MockProvider {
-	p := new(opentf.MockProvider)
+func testProvider() *tofu.MockProvider {
+	p := new(tofu.MockProvider)
 	p.ReadResourceFn = func(req providers.ReadResourceRequest) providers.ReadResourceResponse {
 		return providers.ReadResourceResponse{NewState: req.PriorState}
 	}
@@ -153,9 +155,9 @@ func testProviderSchema() *providers.GetProviderSchemaResponse {
 	}
 }
 
-func testSchemas() *opentf.Schemas {
+func testSchemas() *tofu.Schemas {
 	provider := testProvider()
-	return &opentf.Schemas{
+	return &tofu.Schemas{
 		Providers: map[addrs.Provider]providers.ProviderSchema{
 			addrs.NewDefaultProvider("test"): provider.GetProviderSchema(),
 		},
@@ -269,6 +271,7 @@ func basicState(t *testing.T) *states.State {
 			Provider: addrs.NewDefaultProvider("test"),
 			Module:   addrs.RootModule,
 		},
+		addrs.NoKey,
 	)
 	rootModule.SetResourceInstanceCurrent(
 		addrs.Resource{
@@ -285,6 +288,7 @@ func basicState(t *testing.T) *states.State {
 			Provider: addrs.NewDefaultProvider("test"),
 			Module:   addrs.RootModule,
 		},
+		addrs.NoKey,
 	)
 	return state
 }
@@ -321,6 +325,7 @@ func stateWithMoreOutputs(t *testing.T) *states.State {
 			Provider: addrs.NewDefaultProvider("test"),
 			Module:   addrs.RootModule,
 		},
+		addrs.NoKey,
 	)
 	return state
 }
@@ -348,6 +353,7 @@ func nestedState(t *testing.T) *states.State {
 			Provider: addrs.NewDefaultProvider("test"),
 			Module:   addrs.RootModule,
 		},
+		addrs.NoKey,
 	)
 	return state
 }
@@ -371,6 +377,7 @@ func deposedState(t *testing.T) *states.State {
 			Provider: addrs.NewDefaultProvider("test"),
 			Module:   addrs.RootModule,
 		},
+		addrs.NoKey,
 	)
 	return state
 }
@@ -400,6 +407,7 @@ func onlyDeposedState(t *testing.T) *states.State {
 			Provider: addrs.NewDefaultProvider("test"),
 			Module:   addrs.RootModule,
 		},
+		addrs.NoKey,
 	)
 	rootModule.SetResourceInstanceDeposed(
 		addrs.Resource{
@@ -417,6 +425,7 @@ func onlyDeposedState(t *testing.T) *states.State {
 			Provider: addrs.NewDefaultProvider("test"),
 			Module:   addrs.RootModule,
 		},
+		addrs.NoKey,
 	)
 	return state
 }

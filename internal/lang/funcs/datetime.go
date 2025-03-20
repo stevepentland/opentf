@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package funcs
@@ -28,6 +30,11 @@ func MakeStaticTimestampFunc(static time.Time) function.Function {
 		Params: []function.Parameter{},
 		Type:   function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			// During validation phase, the planTimestamp is zero. By returning unknown value, it's forcing the
+			// HCL parser to skip any evaluation of other expressions that could use this.
+			if static.IsZero() {
+				return cty.UnknownVal(cty.String), nil
+			}
 			return cty.StringVal(static.Format(time.RFC3339)), nil
 		},
 	})
@@ -91,7 +98,7 @@ var TimeCmpFunc = function.New(&function.Spec{
 		case tsA.Before(tsB):
 			return cty.NumberIntVal(-1), nil
 		default:
-			// By elimintation, tsA must be after tsB.
+			// By elimination, tsA must be after tsB.
 			return cty.NumberIntVal(1), nil
 		}
 	},
@@ -99,7 +106,7 @@ var TimeCmpFunc = function.New(&function.Spec{
 
 // Timestamp returns a string representation of the current date and time.
 //
-// In the OpenTF language, timestamps are conventionally represented as
+// In the OpenTofu language, timestamps are conventionally represented as
 // strings using RFC 3339 "Date and Time format" syntax, and so timestamp
 // returns a string in this format.
 func Timestamp() (cty.Value, error) {
@@ -108,7 +115,7 @@ func Timestamp() (cty.Value, error) {
 
 // TimeAdd adds a duration to a timestamp, returning a new timestamp.
 //
-// In the OpenTF language, timestamps are conventionally represented as
+// In the OpenTofu language, timestamps are conventionally represented as
 // strings using RFC 3339 "Date and Time format" syntax. Timeadd requires
 // the timestamp argument to be a string conforming to this syntax.
 //
@@ -129,7 +136,7 @@ func TimeAdd(timestamp cty.Value, duration cty.Value) (cty.Value, error) {
 // TimeCmp considers the UTC offset of each given timestamp when making its
 // decision, so for example 6:00 +0200 and 4:00 UTC are equal.
 //
-// In the OpenTF language, timestamps are conventionally represented as
+// In the OpenTofu language, timestamps are conventionally represented as
 // strings using RFC 3339 "Date and Time format" syntax. TimeCmp requires
 // the timestamp argument to be a string conforming to this syntax.
 //
@@ -156,9 +163,7 @@ func parseTimestamp(ts string) (time.Time, error) {
 			// the timestamp portions by name rather than by Go's example
 			// values.
 			if err.LayoutElem == "" && err.ValueElem == "" && err.Message != "" {
-				// For some reason err.Message is populated with a ": " prefix
-				// by the time package.
-				return time.Time{}, fmt.Errorf("not a valid RFC3339 timestamp%s", err.Message)
+				return time.Time{}, fmt.Errorf("not a valid RFC3339 timestamp: %w", err)
 			}
 			var what string
 			switch err.LayoutElem {

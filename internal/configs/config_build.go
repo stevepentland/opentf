@@ -1,18 +1,20 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package configs
 
 import (
 	"fmt"
-	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	version "github.com/hashicorp/go-version"
 	"github.com/hashicorp/hcl/v2"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 )
 
 // BuildConfig constructs a Config from a root module by loading all of its
@@ -62,8 +64,8 @@ func buildTestModules(root *Config, walker ModuleWalker) hcl.Diagnostics {
 			//    - file: main.tftest.hcl, run: setup - test.main.setup
 			//    - file: tests/main.tftest.hcl, run: setup - test.tests.main.setup
 
-			dir := path.Dir(name)
-			base := path.Base(name)
+			dir := filepath.Dir(name)
+			base := filepath.Base(name)
 
 			path := addrs.Module{}
 			path = append(path, "test")
@@ -71,7 +73,6 @@ func buildTestModules(root *Config, walker ModuleWalker) hcl.Diagnostics {
 				path = append(path, strings.Split(dir, "/")...)
 			}
 			path = append(path, strings.TrimSuffix(base, ".tftest.hcl"), run.Name)
-
 			req := ModuleRequest{
 				Name:              run.Name,
 				Path:              path,
@@ -137,10 +138,14 @@ func buildChildModules(parent *Config, walker ModuleWalker) (map[string]*Config,
 			Name:              call.Name,
 			Path:              path,
 			SourceAddr:        call.SourceAddr,
-			SourceAddrRange:   call.SourceAddrRange,
 			VersionConstraint: call.Version,
 			Parent:            parent,
 			CallRange:         call.DeclRange,
+			Call:              NewStaticModuleCall(path, call.Variables, parent.Root.Module.SourceDir, call.Workspace),
+		}
+		if call.Source != nil {
+			// Invalid modules sometimes have a nil source field which is handled through loadModule below
+			req.SourceAddrRange = call.Source.Range()
 		}
 		child, modDiags := loadModule(parent.Root, &req, walker)
 		diags = append(diags, modDiags...)
@@ -186,7 +191,7 @@ func loadModule(root *Config, req *ModuleRequest, walker ModuleWalker) (*Config,
 		diags = diags.Append(&hcl.Diagnostic{
 			Severity: hcl.DiagWarning,
 			Summary:  "Backend configuration ignored",
-			Detail:   "Any selected backend applies to the entire configuration, so OpenTF expects provider configurations only in the root module.\n\nThis is a warning rather than an error because it's sometimes convenient to temporarily call a root module as a child module for testing purposes, but this backend configuration block will have no effect.",
+			Detail:   "Any selected backend applies to the entire configuration, so OpenTofu expects provider configurations only in the root module.\n\nThis is a warning rather than an error because it's sometimes convenient to temporarily call a root module as a child module for testing purposes, but this backend configuration block will have no effect.",
 			Subject:  mod.Backend.DeclRange.Ptr(),
 		})
 	}
@@ -297,6 +302,10 @@ type ModuleRequest struct {
 	// subject of an error diagnostic that relates to the module call itself,
 	// rather than to either its source address or its version number.
 	CallRange hcl.Range
+
+	// This is where variables and other information from the calling module
+	// are propagated to the child module for use in the static evaluator
+	Call StaticModuleCall
 }
 
 // DisabledModuleWalker is a ModuleWalker that doesn't support

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package ssh
@@ -8,7 +10,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -16,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/communicator/shared"
+	"github.com/opentofu/opentofu/internal/communicator/shared"
 	sshagent "github.com/xanzy/ssh-agent"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
@@ -83,7 +84,7 @@ type connectionInfo struct {
 }
 
 // decodeConnInfo decodes the given cty.Value using the same behavior as the
-// lgeacy mapstructure decoder in order to preserve as much of the existing
+// legacy mapstructure decoder in order to preserve as much of the existing
 // logic as possible for compatibility.
 func decodeConnInfo(v cty.Value) (*connectionInfo, error) {
 	connInfo := &connectionInfo{}
@@ -330,13 +331,13 @@ func buildSSHClientConfig(opts sshClientConfigOpts) (*ssh.ClientConfig, error) {
 	hkCallback := ssh.InsecureIgnoreHostKey()
 
 	if opts.hostKey != "" {
-		// The knownhosts package only takes paths to files, but terraform
+		// The knownhosts package only takes paths to files, but tofu
 		// generally wants to handle config data in-memory. Rather than making
 		// the known_hosts file an exception, write out the data to a temporary
 		// file to create the HostKeyCallback.
-		tf, err := ioutil.TempFile("", "tf-known_hosts")
+		tf, err := os.CreateTemp("", "tf-known_hosts")
 		if err != nil {
-			return nil, fmt.Errorf("failed to create temp known_hosts file: %s", err)
+			return nil, fmt.Errorf("failed to create temp known_hosts file: %w", err)
 		}
 		defer tf.Close()
 		defer os.RemoveAll(tf.Name())
@@ -345,7 +346,7 @@ func buildSSHClientConfig(opts sshClientConfigOpts) (*ssh.ClientConfig, error) {
 		// use it as a direct match if the remote host doesn't return a
 		// certificate.
 		if _, err := tf.WriteString(fmt.Sprintf("@cert-authority %s %s\n", opts.host, opts.hostKey)); err != nil {
-			return nil, fmt.Errorf("failed to write temp known_hosts file: %s", err)
+			return nil, fmt.Errorf("failed to write temp known_hosts file: %w", err)
 		}
 		tf.Sync()
 
@@ -397,22 +398,22 @@ func buildSSHClientConfig(opts sshClientConfigOpts) (*ssh.ClientConfig, error) {
 func signCertWithPrivateKey(pk string, certificate string) (ssh.AuthMethod, error) {
 	rawPk, err := ssh.ParseRawPrivateKey([]byte(pk))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key %q: %s", pk, err)
+		return nil, fmt.Errorf("failed to parse private key %q: %w", pk, err)
 	}
 
 	pcert, _, _, _, err := ssh.ParseAuthorizedKey([]byte(certificate))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse certificate %q: %s", certificate, err)
+		return nil, fmt.Errorf("failed to parse certificate %q: %w", certificate, err)
 	}
 
 	usigner, err := ssh.NewSignerFromKey(rawPk)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create signer from raw private key %q: %s", rawPk, err)
+		return nil, fmt.Errorf("failed to create signer from raw private key %q: %w", rawPk, err)
 	}
 
 	ucertSigner, err := ssh.NewCertSigner(pcert.(*ssh.Certificate), usigner)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cert signer %q: %s", usigner, err)
+		return nil, fmt.Errorf("failed to create cert signer %q: %w", usigner, err)
 	}
 
 	return ssh.PublicKeys(ucertSigner), nil
@@ -433,7 +434,7 @@ func readPrivateKey(pk string) (ssh.AuthMethod, error) {
 
 	signer, err := ssh.ParsePrivateKey([]byte(pk))
 	if err != nil {
-		return nil, fmt.Errorf("Failed to parse ssh private key: %s", err)
+		return nil, fmt.Errorf("Failed to parse ssh private key: %w", err)
 	}
 
 	return ssh.PublicKeys(signer), nil
@@ -525,7 +526,7 @@ func idKeyData(id string) [][]byte {
 	}
 
 	for _, p := range paths {
-		d, err := ioutil.ReadFile(p)
+		d, err := os.ReadFile(p)
 		if err != nil {
 			log.Printf("[DEBUG] error reading %q: %s", p, err)
 			continue

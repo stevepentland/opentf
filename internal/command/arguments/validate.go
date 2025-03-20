@@ -1,10 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package arguments
 
 import (
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 // Validate represents the command-line arguments for the validate command.
@@ -18,12 +20,14 @@ type Validate struct {
 	// Path.
 	TestDirectory string
 
-	// NoTests indicates that OpenTF should not validate any test files
+	// NoTests indicates that OpenTofu should not validate any test files
 	// included with the module.
 	NoTests bool
 
 	// ViewType specifies which output format to use: human, JSON, or "raw".
 	ViewType ViewType
+
+	Vars *Vars
 }
 
 // ParseValidate processes CLI arguments, returning a Validate value and errors.
@@ -33,10 +37,11 @@ func ParseValidate(args []string) (*Validate, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 	validate := &Validate{
 		Path: ".",
+		Vars: &Vars{},
 	}
 
 	var jsonOutput bool
-	cmdFlags := defaultFlagSet("validate")
+	cmdFlags := extendedFlagSet("validate", nil, nil, validate.Vars)
 	cmdFlags.BoolVar(&jsonOutput, "json", false, "json")
 	cmdFlags.StringVar(&validate.TestDirectory, "test-directory", "tests", "test-directory")
 	cmdFlags.BoolVar(&validate.NoTests, "no-tests", false, "no-tests")

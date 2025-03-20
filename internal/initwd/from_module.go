@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package initwd
@@ -6,7 +8,6 @@ package initwd
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -14,16 +15,17 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configload"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/copy"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/getmodules"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/configs/configload"
+	"github.com/opentofu/opentofu/internal/copy"
+	"github.com/opentofu/opentofu/internal/getmodules"
+	"github.com/zclconf/go-cty/cty"
 
 	version "github.com/hashicorp/go-version"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/modsdir"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/registry"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/modsdir"
+	"github.com/opentofu/opentofu/internal/registry"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 const initFromModuleRootCallName = "root"
@@ -59,7 +61,7 @@ func DirFromModule(ctx context.Context, loader *configload.Loader, rootDir, modu
 
 	// The target directory must exist but be empty.
 	{
-		entries, err := ioutil.ReadDir(rootDir)
+		entries, err := os.ReadDir(rootDir)
 		if err != nil {
 			if os.IsNotExist(err) {
 				diags = diags.Append(tfdiags.Sourceless(
@@ -137,16 +139,18 @@ func DirFromModule(ctx context.Context, loader *configload.Loader, rootDir, modu
 			fmt.Sprintf("Failed to parse module source address: %s", err),
 		))
 	}
+	rng := hcl.Range{
+		Filename: initFromModuleRootFilename,
+		Start:    hcl.InitialPos,
+		End:      hcl.InitialPos,
+	}
 	fakeRootModule := &configs.Module{
 		ModuleCalls: map[string]*configs.ModuleCall{
 			initFromModuleRootCallName: {
 				Name:       initFromModuleRootCallName,
 				SourceAddr: sourceAddr,
-				DeclRange: hcl.Range{
-					Filename: initFromModuleRootFilename,
-					Start:    hcl.InitialPos,
-					End:      hcl.InitialPos,
-				},
+				Source:     hcl.StaticExpr(cty.StringVal(sourceAddrStr), rng),
+				DeclRange:  rng,
 			},
 		},
 		ProviderRequirements: &configs.RequiredProviders{},
@@ -212,7 +216,7 @@ func DirFromModule(ctx context.Context, loader *configload.Loader, rootDir, modu
 			// and must thus be rewritten to be absolute addresses again.
 			// For now we can't do this rewriting automatically, but we'll
 			// generate an error to help the user do it manually.
-			mod, _ := loader.Parser().LoadConfigDir(rootDir) // ignore diagnostics since we're just doing value-add here anyway
+			mod, _ := loader.Parser().LoadConfigDir(rootDir, configs.NewStaticModuleCall(addrs.RootModule, nil, rootDir, "")) // ignore diagnostics since we're just doing value-add here anyway
 			if mod != nil {
 				for _, mc := range mod.ModuleCalls {
 					if pathTraversesUp(mc.SourceAddrRaw) {

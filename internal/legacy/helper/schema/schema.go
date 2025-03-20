@@ -1,8 +1,10 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 // schema is a high-level framework for easily writing new providers
-// for Terraform. Usage of schema is recommended over attempting to write
+// for OpenTofu. Usage of schema is recommended over attempting to write
 // to the low-level plugin interfaces manually.
 //
 // schema breaks down provider creation into simple CRUD operations for
@@ -25,10 +27,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/mitchellh/copystructure"
-	"github.com/mitchellh/mapstructure"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/hcl2shim"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/opentf"
+	"github.com/opentofu/opentofu/internal/configs/hcl2shim"
+	"github.com/opentofu/opentofu/internal/legacy/tofu"
 )
 
 // Name of ENV variable which (if not empty) prefers panic over error
@@ -247,7 +249,7 @@ type Schema struct {
 
 	// Sensitive ensures that the attribute's value does not get displayed in
 	// logs or regular output. It should be used for passwords or other
-	// secret fields. Future versions of Terraform may encrypt these
+	// secret fields. Future versions of OpenTofu may encrypt these
 	// values.
 	Sensitive bool
 }
@@ -328,7 +330,7 @@ func (s *Schema) DefaultValue() (interface{}, error) {
 	if s.DefaultFunc != nil {
 		defaultValue, err := s.DefaultFunc()
 		if err != nil {
-			return nil, fmt.Errorf("error loading default: %s", err)
+			return nil, fmt.Errorf("error loading default: %w", err)
 		}
 		return defaultValue, nil
 	}
@@ -360,7 +362,7 @@ func (s *Schema) ZeroValue() interface{} {
 	}
 }
 
-func (s *Schema) finalizeDiff(d *opentf.ResourceAttrDiff, customized bool) *opentf.ResourceAttrDiff {
+func (s *Schema) finalizeDiff(d *tofu.ResourceAttrDiff, customized bool) *tofu.ResourceAttrDiff {
 	if d == nil {
 		return d
 	}
@@ -447,8 +449,8 @@ func (m schemaMap) panicOnError() bool {
 //
 // The diff is optional.
 func (m schemaMap) Data(
-	s *opentf.InstanceState,
-	d *opentf.InstanceDiff) (*ResourceData, error) {
+	s *tofu.InstanceState,
+	d *tofu.InstanceDiff) (*ResourceData, error) {
 	return &ResourceData{
 		schema:       m,
 		state:        s,
@@ -470,13 +472,13 @@ func (m *schemaMap) DeepCopy() schemaMap {
 // Diff returns the diff for a resource given the schema map,
 // state, and configuration.
 func (m schemaMap) Diff(
-	s *opentf.InstanceState,
-	c *opentf.ResourceConfig,
+	s *tofu.InstanceState,
+	c *tofu.ResourceConfig,
 	customizeDiff CustomizeDiffFunc,
 	meta interface{},
-	handleRequiresNew bool) (*opentf.InstanceDiff, error) {
-	result := new(opentf.InstanceDiff)
-	result.Attributes = make(map[string]*opentf.ResourceAttrDiff)
+	handleRequiresNew bool) (*tofu.InstanceDiff, error) {
+	result := new(tofu.InstanceDiff)
+	result.Attributes = make(map[string]*tofu.ResourceAttrDiff)
 
 	// Make sure to mark if the resource is tainted
 	if s != nil {
@@ -527,8 +529,8 @@ func (m schemaMap) Diff(
 		// caused that.
 		if result.RequiresNew() {
 			// Create the new diff
-			result2 := new(opentf.InstanceDiff)
-			result2.Attributes = make(map[string]*opentf.ResourceAttrDiff)
+			result2 := new(tofu.InstanceDiff)
+			result2.Attributes = make(map[string]*tofu.ResourceAttrDiff)
 
 			// Preserve the DestroyTainted flag
 			result2.DestroyTainted = result.DestroyTainted
@@ -613,11 +615,11 @@ func (m schemaMap) Diff(
 	return result, nil
 }
 
-// Input implements the opentf.ResourceProvider method by asking
+// Input implements the tofu.ResourceProvider method by asking
 // for input for required configuration keys that don't have a value.
 func (m schemaMap) Input(
-	input opentf.UIInput,
-	c *opentf.ResourceConfig) (*opentf.ResourceConfig, error) {
+	input tofu.UIInput,
+	c *tofu.ResourceConfig) (*tofu.ResourceConfig, error) {
 	keys := make([]string, 0, len(m))
 	for k, _ := range m {
 		keys = append(keys, k)
@@ -648,7 +650,7 @@ func (m schemaMap) Input(
 		// Skip if it has a default value
 		defaultValue, err := v.DefaultValue()
 		if err != nil {
-			return nil, fmt.Errorf("%s: error loading default: %s", k, err)
+			return nil, fmt.Errorf("%s: error loading default: %w", k, err)
 		}
 		if defaultValue != nil {
 			continue
@@ -676,7 +678,7 @@ func (m schemaMap) Input(
 }
 
 // Validate validates the configuration against this schema mapping.
-func (m schemaMap) Validate(c *opentf.ResourceConfig) ([]string, []error) {
+func (m schemaMap) Validate(c *tofu.ResourceConfig) ([]string, []error) {
 	return m.validateObject("", m, c)
 }
 
@@ -854,7 +856,7 @@ func isValidFieldName(name string) bool {
 }
 
 // resourceDiffer is an interface that is used by the private diff functions.
-// This helps facilitate diff logic for both ResourceData and ResoureDiff with
+// This helps facilitate diff logic for both ResourceData and ResourceDiff with
 // minimal divergence in code.
 type resourceDiffer interface {
 	diffChange(string) (interface{}, interface{}, bool, bool, bool)
@@ -868,28 +870,28 @@ type resourceDiffer interface {
 func (m schemaMap) diff(
 	k string,
 	schema *Schema,
-	diff *opentf.InstanceDiff,
+	diff *tofu.InstanceDiff,
 	d resourceDiffer,
 	all bool) error {
 
-	unsupressedDiff := new(opentf.InstanceDiff)
-	unsupressedDiff.Attributes = make(map[string]*opentf.ResourceAttrDiff)
+	unsuppressedDiff := new(tofu.InstanceDiff)
+	unsuppressedDiff.Attributes = make(map[string]*tofu.ResourceAttrDiff)
 
 	var err error
 	switch schema.Type {
 	case TypeBool, TypeInt, TypeFloat, TypeString:
-		err = m.diffString(k, schema, unsupressedDiff, d, all)
+		err = m.diffString(k, schema, unsuppressedDiff, d, all)
 	case TypeList:
-		err = m.diffList(k, schema, unsupressedDiff, d, all)
+		err = m.diffList(k, schema, unsuppressedDiff, d, all)
 	case TypeMap:
-		err = m.diffMap(k, schema, unsupressedDiff, d, all)
+		err = m.diffMap(k, schema, unsuppressedDiff, d, all)
 	case TypeSet:
-		err = m.diffSet(k, schema, unsupressedDiff, d, all)
+		err = m.diffSet(k, schema, unsuppressedDiff, d, all)
 	default:
 		err = fmt.Errorf("%s: unknown type %#v", k, schema.Type)
 	}
 
-	for attrK, attrV := range unsupressedDiff.Attributes {
+	for attrK, attrV := range unsuppressedDiff.Attributes {
 		switch rd := d.(type) {
 		case *ResourceData:
 			if schema.DiffSuppressFunc != nil && attrV != nil &&
@@ -901,7 +903,7 @@ func (m schemaMap) diff(
 					continue
 				}
 
-				attrV = &opentf.ResourceAttrDiff{
+				attrV = &tofu.ResourceAttrDiff{
 					Old: attrV.Old,
 					New: attrV.Old,
 				}
@@ -916,7 +918,7 @@ func (m schemaMap) diff(
 func (m schemaMap) diffList(
 	k string,
 	schema *Schema,
-	diff *opentf.InstanceDiff,
+	diff *tofu.InstanceDiff,
 	d resourceDiffer,
 	all bool) error {
 	o, n, _, computedList, customized := d.diffChange(k)
@@ -961,7 +963,7 @@ func (m schemaMap) diffList(
 
 	// If the whole list is computed, then say that the # is computed
 	if computedList {
-		diff.Attributes[k+".#"] = &opentf.ResourceAttrDiff{
+		diff.Attributes[k+".#"] = &tofu.ResourceAttrDiff{
 			Old:         oldStr,
 			NewComputed: true,
 			RequiresNew: schema.ForceNew,
@@ -987,7 +989,7 @@ func (m schemaMap) diffList(
 		}
 
 		diff.Attributes[k+".#"] = countSchema.finalizeDiff(
-			&opentf.ResourceAttrDiff{
+			&tofu.ResourceAttrDiff{
 				Old: oldStr,
 				New: newStr,
 			},
@@ -1038,7 +1040,7 @@ func (m schemaMap) diffList(
 func (m schemaMap) diffMap(
 	k string,
 	schema *Schema,
-	diff *opentf.InstanceDiff,
+	diff *tofu.InstanceDiff,
 	d resourceDiffer,
 	all bool) error {
 	prefix := k + "."
@@ -1047,10 +1049,10 @@ func (m schemaMap) diffMap(
 	var stateMap, configMap map[string]string
 	o, n, _, nComputed, customized := d.diffChange(k)
 	if err := mapstructure.WeakDecode(o, &stateMap); err != nil {
-		return fmt.Errorf("%s: %s", k, err)
+		return fmt.Errorf("%s: %w", k, err)
 	}
 	if err := mapstructure.WeakDecode(n, &configMap); err != nil {
-		return fmt.Errorf("%s: %s", k, err)
+		return fmt.Errorf("%s: %w", k, err)
 	}
 
 	// Keep track of whether the state _exists_ at all prior to clearing it
@@ -1093,7 +1095,7 @@ func (m schemaMap) diffMap(
 		}
 
 		diff.Attributes[k+".%"] = countSchema.finalizeDiff(
-			&opentf.ResourceAttrDiff{
+			&tofu.ResourceAttrDiff{
 				Old: oldStr,
 				New: newStr,
 			},
@@ -1116,7 +1118,7 @@ func (m schemaMap) diffMap(
 		}
 
 		diff.Attributes[prefix+k] = schema.finalizeDiff(
-			&opentf.ResourceAttrDiff{
+			&tofu.ResourceAttrDiff{
 				Old: old,
 				New: v,
 			},
@@ -1125,7 +1127,7 @@ func (m schemaMap) diffMap(
 	}
 	for k, v := range stateMap {
 		diff.Attributes[prefix+k] = schema.finalizeDiff(
-			&opentf.ResourceAttrDiff{
+			&tofu.ResourceAttrDiff{
 				Old:        v,
 				NewRemoved: true,
 			},
@@ -1139,7 +1141,7 @@ func (m schemaMap) diffMap(
 func (m schemaMap) diffSet(
 	k string,
 	schema *Schema,
-	diff *opentf.InstanceDiff,
+	diff *tofu.InstanceDiff,
 	d resourceDiffer,
 	all bool) error {
 
@@ -1203,7 +1205,7 @@ func (m schemaMap) diffSet(
 		}
 
 		diff.Attributes[k+".#"] = countSchema.finalizeDiff(
-			&opentf.ResourceAttrDiff{
+			&tofu.ResourceAttrDiff{
 				Old:         countStr,
 				NewComputed: true,
 			},
@@ -1216,7 +1218,7 @@ func (m schemaMap) diffSet(
 	changed := oldLen != newLen
 	if changed || all {
 		diff.Attributes[k+".#"] = countSchema.finalizeDiff(
-			&opentf.ResourceAttrDiff{
+			&tofu.ResourceAttrDiff{
 				Old: oldStr,
 				New: newStr,
 			},
@@ -1266,7 +1268,7 @@ func (m schemaMap) diffSet(
 func (m schemaMap) diffString(
 	k string,
 	schema *Schema,
-	diff *opentf.InstanceDiff,
+	diff *tofu.InstanceDiff,
 	d resourceDiffer,
 	all bool) error {
 	var originalN interface{}
@@ -1281,10 +1283,10 @@ func (m schemaMap) diffString(
 		nraw = schema.Type.Zero()
 	}
 	if err := mapstructure.WeakDecode(o, &os); err != nil {
-		return fmt.Errorf("%s: %s", k, err)
+		return fmt.Errorf("%s: %w", k, err)
 	}
 	if err := mapstructure.WeakDecode(nraw, &ns); err != nil {
-		return fmt.Errorf("%s: %s", k, err)
+		return fmt.Errorf("%s: %w", k, err)
 	}
 
 	if os == ns && !all && !computed {
@@ -1309,7 +1311,7 @@ func (m schemaMap) diffString(
 	}
 
 	diff.Attributes[k] = schema.finalizeDiff(
-		&opentf.ResourceAttrDiff{
+		&tofu.ResourceAttrDiff{
 			Old:         os,
 			New:         ns,
 			NewExtra:    originalN,
@@ -1323,10 +1325,10 @@ func (m schemaMap) diffString(
 }
 
 func (m schemaMap) inputString(
-	input opentf.UIInput,
+	input tofu.UIInput,
 	k string,
 	schema *Schema) (interface{}, error) {
-	result, err := input.Input(context.Background(), &opentf.InputOpts{
+	result, err := input.Input(context.Background(), &tofu.InputOpts{
 		Id:          k,
 		Query:       k,
 		Description: schema.Description,
@@ -1339,7 +1341,7 @@ func (m schemaMap) inputString(
 func (m schemaMap) validate(
 	k string,
 	schema *Schema,
-	c *opentf.ResourceConfig) ([]string, []error) {
+	c *tofu.ResourceConfig) ([]string, []error) {
 	raw, ok := c.Get(k)
 	if !ok && schema.DefaultFunc != nil {
 		// We have a dynamic default. Check if we have a value.
@@ -1347,7 +1349,7 @@ func (m schemaMap) validate(
 		raw, err = schema.DefaultFunc()
 		if err != nil {
 			return nil, []error{fmt.Errorf(
-				"%q, error loading default: %s", k, err)}
+				"%q, error loading default: %w", k, err)}
 		}
 
 		// We're okay as long as we had a value set
@@ -1413,7 +1415,7 @@ func isWhollyKnown(raw interface{}) bool {
 func (m schemaMap) validateConflictingAttributes(
 	k string,
 	schema *Schema,
-	c *opentf.ResourceConfig) error {
+	c *tofu.ResourceConfig) error {
 
 	if len(schema.ConflictsWith) == 0 {
 		return nil
@@ -1438,7 +1440,7 @@ func (m schemaMap) validateList(
 	k string,
 	raw interface{},
 	schema *Schema,
-	c *opentf.ResourceConfig) ([]string, []error) {
+	c *tofu.ResourceConfig) ([]string, []error) {
 	// first check if the list is wholly unknown
 	if s, ok := raw.(string); ok {
 		if s == hcl2shim.UnknownVariableValue {
@@ -1530,7 +1532,7 @@ func (m schemaMap) validateMap(
 	k string,
 	raw interface{},
 	schema *Schema,
-	c *opentf.ResourceConfig) ([]string, []error) {
+	c *tofu.ResourceConfig) ([]string, []error) {
 	// first check if the list is wholly unknown
 	if s, ok := raw.(string); ok {
 		if s == hcl2shim.UnknownVariableValue {
@@ -1616,22 +1618,22 @@ func validateMapValues(k string, m map[string]interface{}, schema *Schema) ([]st
 		case TypeBool:
 			var n bool
 			if err := mapstructure.WeakDecode(raw, &n); err != nil {
-				return nil, []error{fmt.Errorf("%s (%s): %s", k, key, err)}
+				return nil, []error{fmt.Errorf("%s (%s): %w", k, key, err)}
 			}
 		case TypeInt:
 			var n int
 			if err := mapstructure.WeakDecode(raw, &n); err != nil {
-				return nil, []error{fmt.Errorf("%s (%s): %s", k, key, err)}
+				return nil, []error{fmt.Errorf("%s (%s): %w", k, key, err)}
 			}
 		case TypeFloat:
 			var n float64
 			if err := mapstructure.WeakDecode(raw, &n); err != nil {
-				return nil, []error{fmt.Errorf("%s (%s): %s", k, key, err)}
+				return nil, []error{fmt.Errorf("%s (%s): %w", k, key, err)}
 			}
 		case TypeString:
 			var n string
 			if err := mapstructure.WeakDecode(raw, &n); err != nil {
-				return nil, []error{fmt.Errorf("%s (%s): %s", k, key, err)}
+				return nil, []error{fmt.Errorf("%s (%s): %w", k, key, err)}
 			}
 		default:
 			panic(fmt.Sprintf("Unknown validation type: %#v", schema.Type))
@@ -1666,7 +1668,7 @@ func getValueType(k string, schema *Schema) (ValueType, error) {
 func (m schemaMap) validateObject(
 	k string,
 	schema map[string]*Schema,
-	c *opentf.ResourceConfig) ([]string, []error) {
+	c *tofu.ResourceConfig) ([]string, []error) {
 	raw, _ := c.Get(k)
 
 	// schemaMap can't validate nil
@@ -1717,7 +1719,7 @@ func (m schemaMap) validatePrimitive(
 	k string,
 	raw interface{},
 	schema *Schema,
-	c *opentf.ResourceConfig) ([]string, []error) {
+	c *tofu.ResourceConfig) ([]string, []error) {
 
 	// a nil value shouldn't happen in the old protocol, and in the new
 	// protocol the types have already been validated. Either way, we can't
@@ -1753,7 +1755,7 @@ func (m schemaMap) validatePrimitive(
 		// Verify that we can parse this as the correct type
 		var n bool
 		if err := mapstructure.WeakDecode(raw, &n); err != nil {
-			return nil, []error{fmt.Errorf("%s: %s", k, err)}
+			return nil, []error{fmt.Errorf("%s: %w", k, err)}
 		}
 		decoded = n
 	case TypeInt:
@@ -1772,7 +1774,7 @@ func (m schemaMap) validatePrimitive(
 			// Verify that we can parse this as an int
 			var n int
 			if err := mapstructure.WeakDecode(raw, &n); err != nil {
-				return nil, []error{fmt.Errorf("%s: %s", k, err)}
+				return nil, []error{fmt.Errorf("%s: %w", k, err)}
 			}
 			decoded = n
 		}
@@ -1780,14 +1782,14 @@ func (m schemaMap) validatePrimitive(
 		// Verify that we can parse this as an int
 		var n float64
 		if err := mapstructure.WeakDecode(raw, &n); err != nil {
-			return nil, []error{fmt.Errorf("%s: %s", k, err)}
+			return nil, []error{fmt.Errorf("%s: %w", k, err)}
 		}
 		decoded = n
 	case TypeString:
 		// Verify that we can parse this as a string
 		var n string
 		if err := mapstructure.WeakDecode(raw, &n); err != nil {
-			return nil, []error{fmt.Errorf("%s: %s", k, err)}
+			return nil, []error{fmt.Errorf("%s: %w", k, err)}
 		}
 		decoded = n
 	default:
@@ -1805,7 +1807,7 @@ func (m schemaMap) validateType(
 	k string,
 	raw interface{},
 	schema *Schema,
-	c *opentf.ResourceConfig) ([]string, []error) {
+	c *tofu.ResourceConfig) ([]string, []error) {
 	var ws []string
 	var es []error
 	switch schema.Type {

@@ -1,11 +1,13 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package discovery
 
 // A PluginMetaSet is a set of PluginMeta objects meeting a certain criteria.
 //
-// Methods on this type allow filtering of the set to produce subsets that
+// MethodConfigs on this type allow filtering of the set to produce subsets that
 // meet more restrictive criteria.
 type PluginMetaSet map[PluginMeta]struct{}
 
@@ -171,14 +173,14 @@ func (s PluginMetaSet) ConstrainVersions(reqd PluginRequirements) map[string]Plu
 // names are removed and replaced with the single path given in the map.
 //
 // This is here only to continue to support the legacy way of overriding
-// plugin binaries in the .opentfrc file. It treats all given plugins
+// plugin binaries in the .opentofurc file. It treats all given plugins
 // as pre-versioning (version 0.0.0). This mechanism will eventually be
 // phased out, with vendor directories being the intended replacement.
 func (s PluginMetaSet) OverridePaths(paths map[string]string) PluginMetaSet {
 	ret := make(PluginMetaSet)
 	for p := range s {
 		if _, ok := paths[p.Name]; ok {
-			// Skip plugins that we're overridding
+			// Skip plugins that we're overriding
 			continue
 		}
 

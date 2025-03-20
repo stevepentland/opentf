@@ -1,11 +1,13 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,14 +17,14 @@ import (
 	"github.com/mitchellh/cli"
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
-	"github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/tofu"
+	"github.com/opentofu/opentofu/version"
 )
 
 func TestShow_badArgs(t *testing.T) {
@@ -146,6 +148,7 @@ func TestShow_argsWithStateAliasedProvider(t *testing.T) {
 				Dependencies: []addrs.ConfigResource{},
 			},
 			addrs.RootModuleInstance.ProviderConfigAliased(addrs.NewDefaultProvider("test"), "alias"),
+			addrs.NoKey,
 		)
 	})
 
@@ -360,8 +363,8 @@ func TestShow_planWithChanges(t *testing.T) {
 func TestShow_planWithForceReplaceChange(t *testing.T) {
 	// The main goal of this test is to see that the "replace by request"
 	// resource instance action reason can round-trip through a plan file and
-	// be reflected correctly in the "terraform show" output, the same way
-	// as it would appear in "terraform plan" output.
+	// be reflected correctly in the "tofu show" output, the same way
+	// as it would appear in "tofu plan" output.
 
 	_, snap := testModuleWithSnapshot(t, "show")
 	plannedVal := cty.ObjectVal(map[string]cty.Value{
@@ -463,7 +466,7 @@ func TestShow_planErrored(t *testing.T) {
 	}
 
 	got := output.Stdout()
-	want := `Planning failed. OpenTF encountered an error while generating this plan.`
+	want := `Planning failed. OpenTofu encountered an error while generating this plan.`
 	if !strings.Contains(got, want) {
 		t.Fatalf("unexpected output\ngot: %s\nwant: %s", got, want)
 	}
@@ -527,7 +530,7 @@ func TestShow_state(t *testing.T) {
 
 func TestShow_json_output(t *testing.T) {
 	fixtureDir := "testdata/show-json"
-	testDirs, err := ioutil.ReadDir(fixtureDir)
+	testDirs, err := os.ReadDir(fixtureDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,7 +579,7 @@ func TestShow_json_output(t *testing.T) {
 				t.Fatalf("unexpected err: %s", err)
 			}
 			defer wantFile.Close()
-			byteValue, err := ioutil.ReadAll(wantFile)
+			byteValue, err := io.ReadAll(wantFile)
 			if err != nil {
 				t.Fatalf("unexpected err: %s", err)
 			}
@@ -595,7 +598,7 @@ func TestShow_json_output(t *testing.T) {
 			}
 
 			args := []string{
-				"-out=opentf.plan",
+				"-out=tofu.plan",
 			}
 
 			code := pc.Run(args)
@@ -624,9 +627,9 @@ func TestShow_json_output(t *testing.T) {
 
 			args = []string{
 				"-json",
-				"opentf.plan",
+				"tofu.plan",
 			}
-			defer os.Remove("opentf.plan")
+			defer os.Remove("tofu.plan")
 			code = sc.Run(args)
 			showOutput := showDone(t)
 
@@ -685,7 +688,7 @@ func TestShow_json_output_sensitive(t *testing.T) {
 	}
 
 	args := []string{
-		"-out=opentf.plan",
+		"-out=tofu.plan",
 	}
 	code := pc.Run(args)
 	planOutput := planDone(t)
@@ -706,9 +709,9 @@ func TestShow_json_output_sensitive(t *testing.T) {
 
 	args = []string{
 		"-json",
-		"opentf.plan",
+		"tofu.plan",
 	}
-	defer os.Remove("opentf.plan")
+	defer os.Remove("tofu.plan")
 	code = sc.Run(args)
 	showOutput := showDone(t)
 
@@ -727,7 +730,7 @@ func TestShow_json_output_sensitive(t *testing.T) {
 		t.Fatalf("unexpected err: %s", err)
 	}
 	defer wantFile.Close()
-	byteValue, err := ioutil.ReadAll(wantFile)
+	byteValue, err := io.ReadAll(wantFile)
 	if err != nil {
 		t.Fatalf("unexpected err: %s", err)
 	}
@@ -779,7 +782,7 @@ func TestShow_json_output_conditions_refresh_only(t *testing.T) {
 
 	args := []string{
 		"-refresh-only",
-		"-out=opentf.plan",
+		"-out=tofu.plan",
 		"-var=ami=bad-ami",
 		"-state=for-refresh.tfstate",
 	}
@@ -802,9 +805,9 @@ func TestShow_json_output_conditions_refresh_only(t *testing.T) {
 
 	args = []string{
 		"-json",
-		"opentf.plan",
+		"tofu.plan",
 	}
-	defer os.Remove("opentf.plan")
+	defer os.Remove("tofu.plan")
 	code = sc.Run(args)
 	showOutput := showDone(t)
 
@@ -823,7 +826,7 @@ func TestShow_json_output_conditions_refresh_only(t *testing.T) {
 		t.Fatalf("unexpected err: %s", err)
 	}
 	defer wantFile.Close()
-	byteValue, err := ioutil.ReadAll(wantFile)
+	byteValue, err := io.ReadAll(wantFile)
 	if err != nil {
 		t.Fatalf("unexpected err: %s", err)
 	}
@@ -840,7 +843,7 @@ func TestShow_json_output_conditions_refresh_only(t *testing.T) {
 // similar test as above, without the plan
 func TestShow_json_output_state(t *testing.T) {
 	fixtureDir := "testdata/show-json-state"
-	testDirs, err := ioutil.ReadDir(fixtureDir)
+	testDirs, err := os.ReadDir(fixtureDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -910,7 +913,7 @@ func TestShow_json_output_state(t *testing.T) {
 				t.Fatalf("unexpected error: %s", err)
 			}
 			defer wantFile.Close()
-			byteValue, err := ioutil.ReadAll(wantFile)
+			byteValue, err := io.ReadAll(wantFile)
 			if err != nil {
 				t.Fatalf("unexpected err: %s", err)
 			}
@@ -998,6 +1001,80 @@ func TestShow_corruptStatefile(t *testing.T) {
 	}
 }
 
+func TestShow_showSensitiveArg(t *testing.T) {
+	td := t.TempDir()
+	defer testChdir(t, td)()
+
+	originalState := stateWithSensitiveValueForShow()
+
+	testStateFileDefault(t, originalState)
+
+	view, done := testView(t)
+	c := &ShowCommand{
+		Meta: Meta{
+			testingOverrides: metaOverridesForProvider(testProvider()),
+			View:             view,
+		},
+	}
+
+	args := []string{
+		"-show-sensitive",
+	}
+	code := c.Run(args)
+	output := done(t)
+	if code != 0 {
+		t.Fatalf("bad: \n%s", output.Stderr())
+	}
+
+	actual := strings.TrimSpace(output.Stdout())
+	expected := "Outputs:\n\nfoo = \"bar\""
+	if actual != expected {
+		t.Fatalf("got incorrect output: %#v", actual)
+	}
+}
+
+func TestShow_withoutShowSensitiveArg(t *testing.T) {
+	td := t.TempDir()
+	defer testChdir(t, td)()
+
+	originalState := stateWithSensitiveValueForShow()
+
+	testStateFileDefault(t, originalState)
+
+	view, done := testView(t)
+	c := &ShowCommand{
+		Meta: Meta{
+			testingOverrides: metaOverridesForProvider(testProvider()),
+			View:             view,
+		},
+	}
+
+	code := c.Run([]string{})
+	output := done(t)
+	if code != 0 {
+		t.Fatalf("bad: \n%s", output.Stderr())
+	}
+
+	actual := strings.TrimSpace(output.Stdout())
+	expected := "Outputs:\n\nfoo = (sensitive value)"
+	if actual != expected {
+		t.Fatalf("got incorrect output: %#v", actual)
+	}
+}
+
+// stateWithSensitiveValueForShow return a state with an output value
+// marked as sensitive.
+func stateWithSensitiveValueForShow() *states.State {
+	state := states.BuildState(func(s *states.SyncState) {
+		s.SetOutputValue(
+			addrs.OutputValue{Name: "foo"}.Absolute(addrs.RootModuleInstance),
+			cty.StringVal("bar"),
+			true,
+		)
+	})
+	return state
+}
+
 // showFixtureSchema returns a schema suitable for processing the configuration
 // in testdata/show. This schema should be assigned to a mock provider
 // named "test".
@@ -1053,8 +1130,8 @@ func showFixtureSensitiveSchema() *providers.GetProviderSchemaResponse {
 // operation with the configuration in testdata/show. This mock has
 // GetSchemaResponse, PlanResourceChangeFn, and ApplyResourceChangeFn populated,
 // with the plan/apply steps just passing through the data determined by
-// Terraform Core.
-func showFixtureProvider() *opentf.MockProvider {
+// OpenTofu Core.
+func showFixtureProvider() *tofu.MockProvider {
 	p := testProvider()
 	p.GetProviderSchemaResponse = showFixtureSchema()
 	p.ReadResourceFn = func(req providers.ReadResourceRequest) providers.ReadResourceResponse {
@@ -1116,8 +1193,8 @@ func showFixtureProvider() *opentf.MockProvider {
 // operation with the configuration in testdata/show. This mock has
 // GetSchemaResponse, PlanResourceChangeFn, and ApplyResourceChangeFn populated,
 // with the plan/apply steps just passing through the data determined by
-// Terraform Core. It also has a sensitive attribute in the provider schema.
-func showFixtureSensitiveProvider() *opentf.MockProvider {
+// OpenTofu Core. It also has a sensitive attribute in the provider schema.
+func showFixtureSensitiveProvider() *tofu.MockProvider {
 	p := testProvider()
 	p.GetProviderSchemaResponse = showFixtureSensitiveSchema()
 	p.PlanResourceChangeFn = func(req providers.PlanResourceChangeRequest) providers.PlanResourceChangeResponse {

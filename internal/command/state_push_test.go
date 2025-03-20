@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -9,9 +11,10 @@ import (
 	"testing"
 
 	"github.com/mitchellh/cli"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend/remote-state/inmem"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/backend/remote-state/inmem"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/states"
 )
 
 func TestStatePush_empty(t *testing.T) {
@@ -262,7 +265,7 @@ func TestStatePush_forceRemoteState(t *testing.T) {
 	}
 
 	// put a dummy state in place, so we have something to force
-	b := backend.TestBackendConfig(t, inmem.New(), nil)
+	b := backend.TestBackendConfig(t, inmem.New(encryption.StateEncryptionDisabled()), nil)
 	sMgr, err := b.StateMgr("test")
 	if err != nil {
 		t.Fatal(err)

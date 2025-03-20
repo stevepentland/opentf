@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package planfile
@@ -6,20 +8,19 @@ package planfile
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"time"
 
 	"github.com/zclconf/go-cty/cty"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/checks"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/lang/globalref"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/lang/marks"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans/internal/planproto"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/checks"
+	"github.com/opentofu/opentofu/internal/lang/globalref"
+	"github.com/opentofu/opentofu/internal/lang/marks"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/plans/internal/planproto"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/version"
 )
 
 const tfplanFormatVersion = 3
@@ -37,7 +38,7 @@ const tfplanFilename = "tfplan"
 // a plan file, which is stored in a special file in the archive called
 // "tfplan".
 func readTfplan(r io.Reader) (*plans.Plan, error) {
-	src, err := ioutil.ReadAll(r)
+	src, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +46,7 @@ func readTfplan(r io.Reader) (*plans.Plan, error) {
 	var rawPlan planproto.Plan
 	err = proto.Unmarshal(src, &rawPlan)
 	if err != nil {
-		return nil, fmt.Errorf("parse error: %s", err)
+		return nil, fmt.Errorf("parse error: %w", err)
 	}
 
 	if rawPlan.Version != tfplanFormatVersion {
@@ -53,7 +54,7 @@ func readTfplan(r io.Reader) (*plans.Plan, error) {
 	}
 
 	if rawPlan.TerraformVersion != version.String() {
-		return nil, fmt.Errorf("plan file was created by OpenTF or Terraform %s, but this is %s; plan files cannot be transferred between different versions of OpenTF / Terraform", rawPlan.TerraformVersion, version.String())
+		return nil, fmt.Errorf("plan file was created by OpenTofu or Terraform %s, but this is %s; plan files cannot be transferred between different versions of OpenTofu / Terraform", rawPlan.TerraformVersion, version.String())
 	}
 
 	plan := &plans.Plan{
@@ -83,7 +84,7 @@ func readTfplan(r io.Reader) (*plans.Plan, error) {
 		name := rawOC.Name
 		change, err := changeFromTfplan(rawOC.Change)
 		if err != nil {
-			return nil, fmt.Errorf("invalid plan for output %q: %s", name, err)
+			return nil, fmt.Errorf("invalid plan for output %q: %w", name, err)
 		}
 
 		plan.Changes.Outputs = append(plan.Changes.Outputs, &plans.OutputChangeSrc{
@@ -217,15 +218,23 @@ func readTfplan(r io.Reader) (*plans.Plan, error) {
 	for _, rawTargetAddr := range rawPlan.TargetAddrs {
 		target, diags := addrs.ParseTargetStr(rawTargetAddr)
 		if diags.HasErrors() {
-			return nil, fmt.Errorf("plan contains invalid target address %q: %s", target, diags.Err())
+			return nil, fmt.Errorf("plan contains invalid target address %q: %w", target, diags.Err())
 		}
 		plan.TargetAddrs = append(plan.TargetAddrs, target.Subject)
+	}
+
+	for _, rawExcludeAddr := range rawPlan.ExcludeAddrs {
+		exclude, diags := addrs.ParseTargetStr(rawExcludeAddr)
+		if diags.HasErrors() {
+			return nil, fmt.Errorf("plan contains invalid exclude address %q: %w", exclude, diags.Err())
+		}
+		plan.ExcludeAddrs = append(plan.ExcludeAddrs, exclude.Subject)
 	}
 
 	for _, rawReplaceAddr := range rawPlan.ForceReplaceAddrs {
 		addr, diags := addrs.ParseAbsResourceInstanceStr(rawReplaceAddr)
 		if diags.HasErrors() {
-			return nil, fmt.Errorf("plan contains invalid force-replace address %q: %s", addr, diags.Err())
+			return nil, fmt.Errorf("plan contains invalid force-replace address %q: %w", addr, diags.Err())
 		}
 		plan.ForceReplaceAddrs = append(plan.ForceReplaceAddrs, addr)
 	}
@@ -233,7 +242,7 @@ func readTfplan(r io.Reader) (*plans.Plan, error) {
 	for name, rawVal := range rawPlan.Variables {
 		val, err := valueFromTfplan(rawVal)
 		if err != nil {
-			return nil, fmt.Errorf("invalid value for input variable %q: %s", name, err)
+			return nil, fmt.Errorf("invalid value for input variable %q: %w", name, err)
 		}
 		plan.VariableValues[name] = val
 	}
@@ -243,7 +252,7 @@ func readTfplan(r io.Reader) (*plans.Plan, error) {
 	} else {
 		config, err := valueFromTfplan(rawBackend.Config)
 		if err != nil {
-			return nil, fmt.Errorf("plan file has invalid backend configuration: %s", err)
+			return nil, fmt.Errorf("plan file has invalid backend configuration: %w", err)
 		}
 		plan.Backend = plans.Backend{
 			Type:      rawBackend.Type,
@@ -253,7 +262,7 @@ func readTfplan(r io.Reader) (*plans.Plan, error) {
 	}
 
 	if plan.Timestamp, err = time.Parse(time.RFC3339, rawPlan.Timestamp); err != nil {
-		return nil, fmt.Errorf("invalid value for timestamp %s: %s", rawPlan.Timestamp, err)
+		return nil, fmt.Errorf("invalid value for timestamp %s: %w", rawPlan.Timestamp, err)
 	}
 
 	return plan, nil
@@ -270,10 +279,10 @@ func resourceChangeFromTfplan(rawChange *planproto.ResourceInstanceChange) (*pla
 
 	if rawChange.Addr == "" {
 		// If "Addr" isn't populated then seems likely that this is a plan
-		// file created by an earlier version of Terraform, which had the
+		// file created by an earlier version of OpenTofu, which had the
 		// same information spread over various other fields:
 		// ModulePath, Mode, Name, Type, and InstanceKey.
-		return nil, fmt.Errorf("no instance address for resource instance change; perhaps this plan was created by a different version of OpenTF or a different version of Terraform?")
+		return nil, fmt.Errorf("no instance address for resource instance change; perhaps this plan was created by a different version of OpenTofu or a different version of Terraform?")
 	}
 
 	instAddr, diags := addrs.ParseAbsResourceInstanceStr(rawChange.Addr)
@@ -308,14 +317,14 @@ func resourceChangeFromTfplan(rawChange *planproto.ResourceInstanceChange) (*pla
 	for _, p := range rawChange.RequiredReplace {
 		path, err := pathFromTfplan(p)
 		if err != nil {
-			return nil, fmt.Errorf("invalid path in required replace: %s", err)
+			return nil, fmt.Errorf("invalid path in required replace: %w", err)
 		}
 		ret.RequiredReplace.Add(path)
 	}
 
 	change, err := changeFromTfplan(rawChange.Change)
 	if err != nil {
-		return nil, fmt.Errorf("invalid plan for resource %s: %s", ret.Addr, err)
+		return nil, fmt.Errorf("invalid plan for resource %s: %w", ret.Addr, err)
 	}
 
 	ret.ChangeSrc = *change
@@ -390,6 +399,9 @@ func changeFromTfplan(rawChange *planproto.Change) (*plans.ChangeSrc, error) {
 	case planproto.Action_DELETE:
 		ret.Action = plans.Delete
 		beforeIdx = 0
+	case planproto.Action_FORGET:
+		ret.Action = plans.Forget
+		beforeIdx = 0
 	case planproto.Action_CREATE_THEN_DELETE:
 		ret.Action = plans.CreateThenDelete
 		beforeIdx = 0
@@ -409,10 +421,10 @@ func changeFromTfplan(rawChange *planproto.Change) (*plans.ChangeSrc, error) {
 		var err error
 		ret.Before, err = valueFromTfplan(rawChange.Values[beforeIdx])
 		if err != nil {
-			return nil, fmt.Errorf("invalid \"before\" value: %s", err)
+			return nil, fmt.Errorf("invalid \"before\" value: %w", err)
 		}
 		if ret.Before == nil {
-			return nil, fmt.Errorf("missing \"before\" value: %s", err)
+			return nil, fmt.Errorf("missing \"before\" value: %w", err)
 		}
 	}
 	if afterIdx != -1 {
@@ -422,10 +434,10 @@ func changeFromTfplan(rawChange *planproto.Change) (*plans.ChangeSrc, error) {
 		var err error
 		ret.After, err = valueFromTfplan(rawChange.Values[afterIdx])
 		if err != nil {
-			return nil, fmt.Errorf("invalid \"after\" value: %s", err)
+			return nil, fmt.Errorf("invalid \"after\" value: %w", err)
 		}
 		if ret.After == nil {
-			return nil, fmt.Errorf("missing \"after\" value: %s", err)
+			return nil, fmt.Errorf("missing \"after\" value: %w", err)
 		}
 	}
 
@@ -439,11 +451,11 @@ func changeFromTfplan(rawChange *planproto.Change) (*plans.ChangeSrc, error) {
 	sensitive := cty.NewValueMarks(marks.Sensitive)
 	beforeValMarks, err := pathValueMarksFromTfplan(rawChange.BeforeSensitivePaths, sensitive)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode before sensitive paths: %s", err)
+		return nil, fmt.Errorf("failed to decode before sensitive paths: %w", err)
 	}
 	afterValMarks, err := pathValueMarksFromTfplan(rawChange.AfterSensitivePaths, sensitive)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode after sensitive paths: %s", err)
+		return nil, fmt.Errorf("failed to decode after sensitive paths: %w", err)
 	}
 	if len(beforeValMarks) > 0 {
 		ret.BeforeValMarks = beforeValMarks
@@ -512,7 +524,7 @@ func writeTfplan(plan *plans.Plan, w io.Writer) error {
 		// original type when we read the values back in readTFPlan.
 		protoChange, err := changeToTfplan(&oc.ChangeSrc)
 		if err != nil {
-			return fmt.Errorf("cannot write output value %q: %s", name, err)
+			return fmt.Errorf("cannot write output value %q: %w", name, err)
 		}
 
 		rawPlan.OutputChanges = append(rawPlan.OutputChanges, &planproto.OutputChange{
@@ -606,6 +618,10 @@ func writeTfplan(plan *plans.Plan, w io.Writer) error {
 		rawPlan.TargetAddrs = append(rawPlan.TargetAddrs, targetAddr.String())
 	}
 
+	for _, excludeAddr := range plan.ExcludeAddrs {
+		rawPlan.ExcludeAddrs = append(rawPlan.ExcludeAddrs, excludeAddr.String())
+	}
+
 	for _, replaceAddr := range plan.ForceReplaceAddrs {
 		rawPlan.ForceReplaceAddrs = append(rawPlan.ForceReplaceAddrs, replaceAddr.String())
 	}
@@ -631,12 +647,12 @@ func writeTfplan(plan *plans.Plan, w io.Writer) error {
 
 	src, err := proto.Marshal(rawPlan)
 	if err != nil {
-		return fmt.Errorf("serialization error: %s", err)
+		return fmt.Errorf("serialization error: %w", err)
 	}
 
 	_, err = w.Write(src)
 	if err != nil {
-		return fmt.Errorf("failed to write plan to plan file: %s", err)
+		return fmt.Errorf("failed to write plan to plan file: %w", err)
 	}
 
 	return nil
@@ -668,7 +684,7 @@ func resourceAttrFromTfplan(ra *planproto.PlanResourceAttr) (globalref.ResourceA
 	res.Resource = instAddr
 	path, err := pathFromTfplan(ra.Attr)
 	if err != nil {
-		return res, fmt.Errorf("invalid path in %q relevant attribute: %s", res.Resource, err)
+		return res, fmt.Errorf("invalid path in %q relevant attribute: %w", res.Resource, err)
 	}
 
 	res.Attr = path
@@ -702,14 +718,14 @@ func resourceChangeToTfplan(change *plans.ResourceInstanceChangeSrc) (*planproto
 	for _, p := range requiredReplace {
 		path, err := pathToTfplan(p)
 		if err != nil {
-			return nil, fmt.Errorf("invalid path in required replace: %s", err)
+			return nil, fmt.Errorf("invalid path in required replace: %w", err)
 		}
 		ret.RequiredReplace = append(ret.RequiredReplace, path)
 	}
 
 	valChange, err := changeToTfplan(&change.ChangeSrc)
 	if err != nil {
-		return nil, fmt.Errorf("failed to serialize resource %s change: %s", change.Addr, err)
+		return nil, fmt.Errorf("failed to serialize resource %s change: %w", change.Addr, err)
 	}
 	ret.Change = valChange
 
@@ -794,6 +810,9 @@ func changeToTfplan(change *plans.ChangeSrc) (*planproto.Change, error) {
 	case plans.Delete:
 		ret.Action = planproto.Action_DELETE
 		ret.Values = []*planproto.DynamicValue{before}
+	case plans.Forget:
+		ret.Action = planproto.Action_FORGET
+		ret.Values = []*planproto.DynamicValue{before}
 	case plans.DeleteThenCreate:
 		ret.Action = planproto.Action_DELETE_THEN_CREATE
 		ret.Values = []*planproto.DynamicValue{before, after}
@@ -852,15 +871,15 @@ func pathFromTfplan(path *planproto.Path) (cty.Path, error) {
 		case *planproto.Path_Step_ElementKey:
 			dynamicVal, err := valueFromTfplan(s.ElementKey)
 			if err != nil {
-				return nil, fmt.Errorf("error decoding path index step: %s", err)
+				return nil, fmt.Errorf("error decoding path index step: %w", err)
 			}
 			ty, err := dynamicVal.ImpliedType()
 			if err != nil {
-				return nil, fmt.Errorf("error determining path index type: %s", err)
+				return nil, fmt.Errorf("error determining path index type: %w", err)
 			}
 			val, err := dynamicVal.Decode(ty)
 			if err != nil {
-				return nil, fmt.Errorf("error decoding path index value: %s", err)
+				return nil, fmt.Errorf("error decoding path index value: %w", err)
 			}
 			ret = append(ret, cty.IndexStep{Key: val})
 		case *planproto.Path_Step_AttributeName:
@@ -879,7 +898,7 @@ func pathToTfplan(path cty.Path) (*planproto.Path, error) {
 		case cty.IndexStep:
 			value, err := plans.NewDynamicValue(s.Key, s.Key.Type())
 			if err != nil {
-				return nil, fmt.Errorf("Error encoding path step: %s", err)
+				return nil, fmt.Errorf("Error encoding path step: %w", err)
 			}
 			steps = append(steps, &planproto.Path_Step{
 				Selector: &planproto.Path_Step_ElementKey{

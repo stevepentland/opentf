@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package winrm
@@ -13,9 +15,9 @@ import (
 	"time"
 
 	"github.com/masterzen/winrm"
+	"github.com/opentofu/opentofu/internal/communicator/remote"
+	"github.com/opentofu/opentofu/internal/provisioners"
 	"github.com/packer-community/winrmcp/winrmcp"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/communicator/remote"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/provisioners"
 	"github.com/zclconf/go-cty/cty"
 )
 

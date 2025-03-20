@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package jsonprovider
@@ -8,7 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
+	"github.com/opentofu/opentofu/internal/providers"
 )
 
 func TestMarshalSchemas(t *testing.T) {

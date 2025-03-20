@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package tf
@@ -7,9 +9,9 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/go-uuid"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
@@ -51,6 +53,54 @@ func upgradeDataStoreResourceState(req providers.UpgradeResourceStateRequest) (r
 	}
 
 	resp.UpgradedState = val
+	return resp
+}
+
+// nullResourceSchema returns a schema for a null_resource with relevant attributes for type migration.
+func nullResourceSchema() providers.Schema {
+	return providers.Schema{
+		Block: &configschema.Block{
+			Attributes: map[string]*configschema.Attribute{
+				"triggers": {Type: cty.Map(cty.String), Optional: true},
+				"id":       {Type: cty.String, Computed: true},
+			},
+		},
+	}
+
+}
+
+func moveDataStoreResourceState(req providers.MoveResourceStateRequest) providers.MoveResourceStateResponse {
+	var resp providers.MoveResourceStateResponse
+	if req.SourceTypeName != "null_resource" || req.TargetTypeName != "terraform_data" {
+		resp.Diagnostics = resp.Diagnostics.Append(
+			fmt.Errorf("unsupported move: %s -> %s; only move from null_resource to terraform_data is supported",
+				req.SourceTypeName, req.TargetTypeName))
+		return resp
+	}
+	nullTy := nullResourceSchema().Block.ImpliedType()
+	oldState, err := ctyjson.Unmarshal(req.SourceStateJSON, nullTy)
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+	oldStateMap := oldState.AsValueMap()
+	newStateMap := map[string]cty.Value{}
+
+	if trigger, ok := oldStateMap["triggers"]; ok && !trigger.IsNull() {
+		newStateMap["triggers_replace"] = cty.ObjectVal(trigger.AsValueMap())
+	}
+	if id, ok := oldStateMap["id"]; ok && !id.IsNull() {
+		newStateMap["id"] = id
+	}
+
+	currentSchema := dataStoreResourceSchema()
+	newState, err := currentSchema.Block.CoerceValue(cty.ObjectVal(newStateMap))
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+	resp.TargetState = newState
+	resp.TargetPrivate = req.SourcePrivate
 	return resp
 }
 
@@ -125,7 +175,7 @@ func applyDataStoreResourceChange(req providers.ApplyResourceChangeRequest) (res
 
 	if !req.PlannedState.GetAttr("id").IsKnown() {
 		idString, err := uuid.GenerateUUID()
-		// OpenTF would probably never get this far without a good random
+		// OpenTofu would probably never get this far without a good random
 		// source, but catch the error anyway.
 		if err != nil {
 			diag := tfdiags.AttributeValue(

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package addrs
@@ -9,7 +11,7 @@ import (
 	"github.com/go-test/deep"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 func TestParseTarget(t *testing.T) {
@@ -384,7 +386,7 @@ func TestParseTarget(t *testing.T) {
 			}
 
 			for _, problem := range deep.Equal(got, test.Want) {
-				t.Errorf(problem)
+				t.Errorf("%s", problem)
 			}
 		})
 	}

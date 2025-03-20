@@ -1,10 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package structured
 
 import (
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat/computed"
+	"github.com/opentofu/opentofu/internal/command/jsonformat/computed"
 )
 
 type ProcessUnknown func(current Change) computed.Diff

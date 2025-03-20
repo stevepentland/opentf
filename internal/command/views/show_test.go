@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -9,17 +11,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/cloud/cloudplan"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/initwd"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/cloud/cloudplan"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/initwd"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/terminal"
+	"github.com/opentofu/opentofu/internal/tofu"
 
 	"github.com/zclconf/go-cty/cty"
 )
@@ -34,7 +36,7 @@ func TestShowHuman(t *testing.T) {
 		plan       *plans.Plan
 		jsonPlan   *cloudplan.RemotePlanJSON
 		stateFile  *statefile.File
-		schemas    *opentf.Schemas
+		schemas    *tofu.Schemas
 		wantExact  bool
 		wantString string
 	}{
@@ -53,7 +55,7 @@ func TestShowHuman(t *testing.T) {
 				Redacted:  true,
 				Mode:      plans.NormalMode,
 				Qualities: []plans.Quality{},
-				RunHeader: "[reset][yellow]To view this run in a browser, visit:\nhttps://app.terraform.io/app/example_org/example_workspace/runs/run-run-bugsBUGSbugsBUGS[reset]",
+				RunHeader: "[reset][yellow]To view this run in a browser, visit:\nhttps://app.example.com/app/example_org/example_workspace/runs/run-run-bugsBUGSbugsBUGS[reset]",
 				RunFooter: "[reset][green]Run status: planned and saved (confirmable)[reset]\n[green]Workspace is unlocked[reset]",
 			},
 			nil,
@@ -139,7 +141,7 @@ func TestShowJSON(t *testing.T) {
 				Redacted:  false,
 				Mode:      plans.NormalMode,
 				Qualities: []plans.Quality{},
-				RunHeader: "[reset][yellow]To view this run in a browser, visit:\nhttps://app.terraform.io/app/example_org/example_workspace/runs/run-run-bugsBUGSbugsBUGS[reset]",
+				RunHeader: "[reset][yellow]To view this run in a browser, visit:\nhttps://app.example.com/app/example_org/example_workspace/runs/run-run-bugsBUGSbugsBUGS[reset]",
 				RunFooter: "[reset][green]Run status: planned and saved (confirmable)[reset]\n[green]Workspace is unlocked[reset]",
 			},
 			nil,
@@ -179,7 +181,7 @@ func TestShowJSON(t *testing.T) {
 			view.Configure(&arguments.View{NoColor: true})
 			v := NewShow(arguments.ViewJSON, view)
 
-			schemas := &opentf.Schemas{
+			schemas := &tofu.Schemas{
 				Providers: map[addrs.Provider]providers.ProviderSchema{
 					addrs.NewDefaultProvider("test"): {
 						ResourceTypes: map[string]providers.Schema{
@@ -231,6 +233,7 @@ func testState() *states.State {
 				Provider: addrs.NewDefaultProvider("test"),
 				Module:   addrs.RootModule,
 			},
+			addrs.NoKey,
 		)
 		// DeepCopy is used here to ensure our synthetic state matches exactly
 		// with a state that will have been copied during the command

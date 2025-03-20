@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package configload
@@ -9,10 +11,10 @@ import (
 	version "github.com/hashicorp/go-version"
 	"github.com/hashicorp/hcl/v2"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
+	"github.com/opentofu/opentofu/internal/configs"
 )
 
-// LoadConfig reads the Terraform module in the given directory and uses it as the
+// LoadConfig reads the OpenTofu module in the given directory and uses it as the
 // root module to build the static module tree that represents a configuration,
 // assuming that all required descendent modules have already been installed.
 //
@@ -22,14 +24,14 @@ import (
 //
 // LoadConfig performs the basic syntax and uniqueness validations that are
 // required to process the individual modules
-func (l *Loader) LoadConfig(rootDir string) (*configs.Config, hcl.Diagnostics) {
-	return l.loadConfig(l.parser.LoadConfigDir(rootDir))
+func (l *Loader) LoadConfig(rootDir string, call configs.StaticModuleCall) (*configs.Config, hcl.Diagnostics) {
+	return l.loadConfig(l.parser.LoadConfigDir(rootDir, call))
 }
 
 // LoadConfigWithTests matches LoadConfig, except the configs.Config contains
 // any relevant .tftest.hcl files.
-func (l *Loader) LoadConfigWithTests(rootDir string, testDir string) (*configs.Config, hcl.Diagnostics) {
-	return l.loadConfig(l.parser.LoadConfigDirWithTests(rootDir, testDir))
+func (l *Loader) LoadConfigWithTests(rootDir string, testDir string, call configs.StaticModuleCall) (*configs.Config, hcl.Diagnostics) {
+	return l.loadConfig(l.parser.LoadConfigDirWithTests(rootDir, testDir, call))
 }
 
 func (l *Loader) loadConfig(rootMod *configs.Module, diags hcl.Diagnostics) (*configs.Config, hcl.Diagnostics) {
@@ -55,7 +57,7 @@ func (l *Loader) moduleWalkerLoad(req *configs.ModuleRequest) (*configs.Module, 
 	// Since we're just loading here, we expect that all referenced modules
 	// will be already installed and described in our manifest. However, we
 	// do verify that the manifest and the configuration are in agreement
-	// so that we can prompt the user to run "terraform init" if not.
+	// so that we can prompt the user to run "tofu init" if not.
 
 	key := l.modules.manifest.ModuleKey(req.Path)
 	record, exists := l.modules.manifest[key]
@@ -65,7 +67,7 @@ func (l *Loader) moduleWalkerLoad(req *configs.ModuleRequest) (*configs.Module, 
 			{
 				Severity: hcl.DiagError,
 				Summary:  "Module not installed",
-				Detail:   "This module is not yet installed. Run \"opentf init\" to install all modules required by this configuration.",
+				Detail:   "This module is not yet installed. Run \"tofu init\" to install all modules required by this configuration.",
 				Subject:  &req.CallRange,
 			},
 		}
@@ -81,7 +83,7 @@ func (l *Loader) moduleWalkerLoad(req *configs.ModuleRequest) (*configs.Module, 
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
 			Summary:  "Module source has changed",
-			Detail:   "The source address was changed since this module was installed. Run \"opentf init\" to install all modules required by this configuration.",
+			Detail:   fmt.Sprintf("The source address was changed from %q to %q since this module was installed. Run \"tofu init\" to install all modules required by this configuration.", record.SourceAddr, req.SourceAddr.String()),
 			Subject:  &req.SourceAddrRange,
 		})
 	}
@@ -89,7 +91,7 @@ func (l *Loader) moduleWalkerLoad(req *configs.ModuleRequest) (*configs.Module, 
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
 			Summary:  "Module version requirements have changed",
-			Detail:   "The version requirements have changed since this module was installed and the installed version is no longer acceptable. Run \"opentf init\" to install all modules required by this configuration.",
+			Detail:   "The version requirements have changed since this module was installed and the installed version is no longer acceptable. Run \"tofu init\" to install all modules required by this configuration.",
 			Subject:  &req.SourceAddrRange,
 		})
 	}
@@ -98,14 +100,14 @@ func (l *Loader) moduleWalkerLoad(req *configs.ModuleRequest) (*configs.Module, 
 			Severity: hcl.DiagError,
 			Summary:  "Module version requirements have changed",
 			Detail: fmt.Sprintf(
-				"The version requirements have changed since this module was installed and the installed version (%s) is no longer acceptable. Run \"opentf init\" to install all modules required by this configuration.",
+				"The version requirements have changed since this module was installed and the installed version (%s) is no longer acceptable. Run \"tofu init\" to install all modules required by this configuration.",
 				record.Version,
 			),
 			Subject: &req.SourceAddrRange,
 		})
 	}
 
-	mod, mDiags := l.parser.LoadConfigDir(record.Dir)
+	mod, mDiags := l.parser.LoadConfigDir(record.Dir, req.Call)
 	diags = append(diags, mDiags...)
 	if mod == nil {
 		// nil specifically indicates that the directory does not exist or
@@ -116,7 +118,7 @@ func (l *Loader) moduleWalkerLoad(req *configs.ModuleRequest) (*configs.Module, 
 			{
 				Severity: hcl.DiagError,
 				Summary:  "Module not installed",
-				Detail:   fmt.Sprintf("This module's local cache directory %s could not be read. Run \"opentf init\" to install all modules required by this configuration.", record.Dir),
+				Detail:   fmt.Sprintf("This module's local cache directory %s could not be read. Run \"tofu init\" to install all modules required by this configuration.", record.Dir),
 				Subject:  &req.CallRange,
 			},
 		}

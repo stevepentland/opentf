@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -21,7 +23,7 @@ func (c *MetadataCommand) Run(args []string) int {
 
 func (c *MetadataCommand) Help() string {
 	helpText := `
-Usage: opentf [global options] metadata <subcommand> [options] [args]
+Usage: tofu [global options] metadata <subcommand> [options] [args]
 
   This command has subcommands for metadata related purposes.
 

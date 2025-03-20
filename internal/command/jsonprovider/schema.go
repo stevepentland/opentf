@@ -1,10 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package jsonprovider
 
 import (
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
+	"github.com/opentofu/opentofu/internal/providers"
 )
 
 type Schema struct {
@@ -12,7 +14,7 @@ type Schema struct {
 	Block   *Block `json:"block,omitempty"`
 }
 
-// marshalSchema is a convenience wrapper around mashalBlock. Schema version
+// marshalSchema is a convenience wrapper around marshalBlock. Schema version
 // should be set by the caller.
 func marshalSchema(schema providers.Schema) *Schema {
 	if schema.Block == nil {

@@ -1,3 +1,8 @@
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package command
 
 import (
@@ -8,5 +13,5 @@ import (
 var tracer trace.Tracer
 
 func init() {
-	tracer = otel.Tracer("github.com/placeholderplaceholderplaceholder/opentf/internal/command")
+	tracer = otel.Tracer("github.com/opentofu/opentofu/internal/command")
 }

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package schema
@@ -9,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/opentf"
+	"github.com/opentofu/opentofu/internal/legacy/tofu"
 )
 
 func TestResourceTimeout_ConfigDecode_badkey(t *testing.T) {
@@ -62,7 +64,7 @@ func TestResourceTimeout_ConfigDecode_badkey(t *testing.T) {
 				Timeouts: c.ResourceDefaultTimeout,
 			}
 
-			conf := opentf.NewResourceConfigRaw(
+			conf := tofu.NewResourceConfigRaw(
 				map[string]interface{}{
 					"foo":             "bar",
 					TimeoutsConfigKey: c.Config,
@@ -99,7 +101,7 @@ func TestResourceTimeout_ConfigDecode(t *testing.T) {
 		},
 	}
 
-	c := opentf.NewResourceConfigRaw(
+	c := tofu.NewResourceConfigRaw(
 		map[string]interface{}{
 			"foo": "bar",
 			TimeoutsConfigKey: map[string]interface{}{
@@ -133,7 +135,7 @@ func TestResourceTimeout_legacyConfigDecode(t *testing.T) {
 		},
 	}
 
-	c := opentf.NewResourceConfigRaw(
+	c := tofu.NewResourceConfigRaw(
 		map[string]interface{}{
 			"foo": "bar",
 			TimeoutsConfigKey: []interface{}{
@@ -195,7 +197,7 @@ func TestResourceTimeout_DiffEncode_basic(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		state := &opentf.InstanceDiff{}
+		state := &tofu.InstanceDiff{}
 		err := c.Timeout.DiffEncode(state)
 		if err != nil && !c.ShouldErr {
 			t.Fatalf("Error, expected:\n%#v\n got:\n%#v\n", c.Expected, state.Meta)
@@ -209,7 +211,7 @@ func TestResourceTimeout_DiffEncode_basic(t *testing.T) {
 	}
 	// same test cases but for InstanceState
 	for _, c := range cases {
-		state := &opentf.InstanceState{}
+		state := &tofu.InstanceState{}
 		err := c.Timeout.StateEncode(state)
 		if err != nil && !c.ShouldErr {
 			t.Fatalf("Error, expected:\n%#v\n got:\n%#v\n", c.Expected, state.Meta)
@@ -225,32 +227,32 @@ func TestResourceTimeout_DiffEncode_basic(t *testing.T) {
 
 func TestResourceTimeout_MetaDecode_basic(t *testing.T) {
 	cases := []struct {
-		State    *opentf.InstanceDiff
+		State    *tofu.InstanceDiff
 		Expected *ResourceTimeout
 		// Not immediately clear when an error would hit
 		ShouldErr bool
 	}{
 		// Two fields
 		{
-			State:     &opentf.InstanceDiff{Meta: map[string]interface{}{TimeoutKey: expectedForValues(10, 0, 5, 0, 0)}},
+			State:     &tofu.InstanceDiff{Meta: map[string]interface{}{TimeoutKey: expectedForValues(10, 0, 5, 0, 0)}},
 			Expected:  timeoutForValues(10, 0, 5, 0, 0),
 			ShouldErr: false,
 		},
 		// Two fields, one is Default
 		{
-			State:     &opentf.InstanceDiff{Meta: map[string]interface{}{TimeoutKey: expectedForValues(10, 0, 0, 0, 7)}},
+			State:     &tofu.InstanceDiff{Meta: map[string]interface{}{TimeoutKey: expectedForValues(10, 0, 0, 0, 7)}},
 			Expected:  timeoutForValues(10, 7, 7, 7, 7),
 			ShouldErr: false,
 		},
 		// All fields
 		{
-			State:     &opentf.InstanceDiff{Meta: map[string]interface{}{TimeoutKey: expectedForValues(10, 3, 4, 1, 7)}},
+			State:     &tofu.InstanceDiff{Meta: map[string]interface{}{TimeoutKey: expectedForValues(10, 3, 4, 1, 7)}},
 			Expected:  timeoutForValues(10, 3, 4, 1, 7),
 			ShouldErr: false,
 		},
 		// No fields
 		{
-			State:     &opentf.InstanceDiff{},
+			State:     &tofu.InstanceDiff{},
 			Expected:  &ResourceTimeout{},
 			ShouldErr: false,
 		},

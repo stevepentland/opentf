@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -12,12 +14,12 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	viewsjson "github.com/placeholderplaceholderplaceholder/opentf/internal/command/views/json"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
-	tfversion "github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/addrs"
+	viewsjson "github.com/opentofu/opentofu/internal/command/views/json"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/terminal"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	tfversion "github.com/opentofu/opentofu/version"
 )
 
 // Calling NewJSONView should also always output a version message, which is a
@@ -30,10 +32,10 @@ func TestNewJSONView(t *testing.T) {
 	want := []map[string]interface{}{
 		{
 			"@level":   "info",
-			"@message": fmt.Sprintf("OpenTF %s", version),
-			"@module":  "opentf.ui",
+			"@message": fmt.Sprintf("OpenTofu %s", version),
+			"@module":  "tofu.ui",
 			"type":     "version",
-			"opentf":   version,
+			"tofu":     version,
 			"ui":       JSON_UI_VERSION,
 		},
 	}
@@ -42,20 +44,44 @@ func TestNewJSONView(t *testing.T) {
 }
 
 func TestJSONView_Log(t *testing.T) {
-	streams, done := terminal.StreamsForTesting(t)
-	jv := NewJSONView(NewView(streams))
-
-	jv.Log("hello, world")
-
-	want := []map[string]interface{}{
+	testCases := []struct {
+		caseName string
+		input    string
+		want     []map[string]interface{}
+	}{
 		{
-			"@level":   "info",
-			"@message": "hello, world",
-			"@module":  "opentf.ui",
-			"type":     "log",
+			"log with regular character",
+			"hello, world",
+			[]map[string]interface{}{
+				{
+					"@level":   "info",
+					"@message": "hello, world",
+					"@module":  "tofu.ui",
+					"type":     "log",
+				},
+			},
+		},
+		{
+			"log with special character",
+			"hello, special char, <>&",
+			[]map[string]interface{}{
+				{
+					"@level":   "info",
+					"@message": "hello, special char, <>&",
+					"@module":  "tofu.ui",
+					"type":     "log",
+				},
+			},
 		},
 	}
-	testJSONViewOutputEquals(t, done(t).Stdout(), want)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			streams, done := terminal.StreamsForTesting(t)
+			jv := NewJSONView(NewView(streams))
+			jv.Log(tc.input)
+			testJSONViewOutputEquals(t, done(t).Stdout(), tc.want)
+		})
+	}
 }
 
 // This test covers only the basics of JSON diagnostic rendering, as more
@@ -82,7 +108,7 @@ func TestJSONView_Diagnostics(t *testing.T) {
 		{
 			"@level":   "warn",
 			"@message": `Warning: Improper use of "less"`,
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "diagnostic",
 			"diagnostic": map[string]interface{}{
 				"severity": "warning",
@@ -93,7 +119,7 @@ func TestJSONView_Diagnostics(t *testing.T) {
 		{
 			"@level":   "error",
 			"@message": "Error: Unusually stripey cat detected",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "diagnostic",
 			"diagnostic": map[string]interface{}{
 				"severity": "error",
@@ -127,7 +153,7 @@ func TestJSONView_DiagnosticsWithMetadata(t *testing.T) {
 		{
 			"@level":   "warn",
 			"@message": `Warning: Improper use of "less"`,
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "diagnostic",
 			"diagnostic": map[string]interface{}{
 				"severity": "warning",
@@ -139,7 +165,7 @@ func TestJSONView_DiagnosticsWithMetadata(t *testing.T) {
 		{
 			"@level":   "error",
 			"@message": "Error: Unusually stripey cat detected",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "diagnostic",
 			"diagnostic": map[string]interface{}{
 				"severity": "error",
@@ -174,7 +200,7 @@ func TestJSONView_PlannedChange(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": `module.foo.test_instance.bar["boop"]: Plan to create`,
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "planned_change",
 			"change": map[string]interface{}{
 				"action": "create",
@@ -215,7 +241,7 @@ func TestJSONView_ResourceDrift(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": `module.foo.test_instance.bar["boop"]: Drift detected (update)`,
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "resource_drift",
 			"change": map[string]interface{}{
 				"action": "update",
@@ -249,13 +275,14 @@ func TestJSONView_ChangeSummary(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "Apply complete! Resources: 1 added, 2 changed, 3 destroyed.",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "change_summary",
 			"changes": map[string]interface{}{
 				"add":       float64(1),
 				"import":    float64(0),
 				"change":    float64(2),
 				"remove":    float64(3),
+				"forget":    float64(0),
 				"operation": "apply",
 			},
 		},
@@ -279,13 +306,45 @@ func TestJSONView_ChangeSummaryWithImport(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "Apply complete! Resources: 1 imported, 1 added, 2 changed, 3 destroyed.",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "change_summary",
 			"changes": map[string]interface{}{
 				"add":       float64(1),
 				"change":    float64(2),
 				"remove":    float64(3),
 				"import":    float64(1),
+				"forget":    float64(0),
+				"operation": "apply",
+			},
+		},
+	}
+	testJSONViewOutputEquals(t, done(t).Stdout(), want)
+}
+
+func TestJSONView_ChangeSummaryWithForget(t *testing.T) {
+	streams, done := terminal.StreamsForTesting(t)
+	jv := NewJSONView(NewView(streams))
+
+	jv.ChangeSummary(&viewsjson.ChangeSummary{
+		Add:       1,
+		Change:    2,
+		Remove:    3,
+		Forget:    1,
+		Operation: viewsjson.OperationApplied,
+	})
+
+	want := []map[string]interface{}{
+		{
+			"@level":   "info",
+			"@message": "Apply complete! Resources: 1 added, 2 changed, 3 destroyed, 1 forgotten.",
+			"@module":  "tofu.ui",
+			"type":     "change_summary",
+			"changes": map[string]interface{}{
+				"add":       float64(1),
+				"change":    float64(2),
+				"remove":    float64(3),
+				"import":    float64(0),
+				"forget":    float64(1),
 				"operation": "apply",
 			},
 		},
@@ -311,7 +370,7 @@ func TestJSONView_Hook(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": `module.foo.test_instance.bar["boop"]: Creation complete after 34s [id=boop-beep]`,
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "apply_complete",
 			"hook": map[string]interface{}{
 				"resource": map[string]interface{}{
@@ -354,7 +413,7 @@ func TestJSONView_Outputs(t *testing.T) {
 		{
 			"@level":   "info",
 			"@message": "Outputs: 2",
-			"@module":  "opentf.ui",
+			"@module":  "tofu.ui",
 			"type":     "outputs",
 			"outputs": map[string]interface{}{
 				"boop_count": map[string]interface{}{

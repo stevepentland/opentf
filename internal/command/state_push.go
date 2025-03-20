@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -11,13 +13,14 @@ import (
 
 	"github.com/mitchellh/cli"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/clistate"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/clistate"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 // StatePushCommand is a Command implementation that shows a single resource.
@@ -49,6 +52,13 @@ func (c *StatePushCommand) Run(args []string) int {
 		return 1
 	}
 
+	// Load the encryption configuration
+	enc, encDiags := c.Encryption()
+	if encDiags.HasErrors() {
+		c.showDiagnostics(encDiags)
+		return 1
+	}
+
 	// Determine our reader for the input state. This is the filepath
 	// or stdin if "-" is given.
 	var r io.Reader = os.Stdin
@@ -66,7 +76,7 @@ func (c *StatePushCommand) Run(args []string) int {
 	}
 
 	// Read the state
-	srcStateFile, err := statefile.Read(r)
+	srcStateFile, err := statefile.Read(r, encryption.StateEncryptionDisabled()) // Assume the given statefile is not encrypted
 	if c, ok := r.(io.Closer); ok {
 		// Close the reader if possible right now since we're done with it.
 		c.Close()
@@ -77,7 +87,7 @@ func (c *StatePushCommand) Run(args []string) int {
 	}
 
 	// Load the backend
-	b, backendDiags := c.Backend(nil)
+	b, backendDiags := c.Backend(nil, enc.State())
 	if backendDiags.HasErrors() {
 		c.showDiagnostics(backendDiags)
 		return 1
@@ -90,7 +100,7 @@ func (c *StatePushCommand) Run(args []string) int {
 		return 1
 	}
 
-	// Check remote Terraform version is compatible
+	// Check remote OpenTofu version is compatible
 	remoteVersionDiags := c.remoteVersionCheck(b, workspace)
 	c.showDiagnostics(remoteVersionDiags)
 	if remoteVersionDiags.HasErrors() {
@@ -134,7 +144,7 @@ func (c *StatePushCommand) Run(args []string) int {
 	}
 
 	// Get schemas, if possible, before writing state
-	var schemas *opentf.Schemas
+	var schemas *tofu.Schemas
 	var diags tfdiags.Diagnostics
 	if isCloudMode(b) {
 		schemas, diags = c.MaybeGetSchemas(srcStateFile.State, nil)
@@ -155,7 +165,7 @@ func (c *StatePushCommand) Run(args []string) int {
 
 func (c *StatePushCommand) Help() string {
 	helpText := `
-Usage: opentf [global options] state push [options] PATH
+Usage: tofu [global options] state push [options] PATH
 
   Update remote state from a local state file at PATH.
 
@@ -181,6 +191,15 @@ Options:
                       against the same workspace.
 
   -lock-timeout=0s    Duration to retry a state lock.
+
+  -var 'foo=bar'      Set a value for one of the input variables in the root
+                      module of the configuration. Use this option more than
+                      once to set more than one variable.
+
+  -var-file=filename  Load variable values from the given file, in addition
+                      to the default files terraform.tfvars and *.auto.tfvars.
+                      Use this option more than once to include more than one
+                      variables file.
 
 `
 	return strings.TrimSpace(helpText)

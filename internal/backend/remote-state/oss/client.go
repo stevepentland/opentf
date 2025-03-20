@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package oss
@@ -19,8 +21,8 @@ import (
 	uuid "github.com/hashicorp/go-uuid"
 	"github.com/pkg/errors"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/remote"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/states/remote"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
 )
 
 const (
@@ -99,7 +101,7 @@ func (c *RemoteClient) Get() (payload *remote.Payload, err error) {
 func (c *RemoteClient) Put(data []byte) error {
 	bucket, err := c.ossClient.Bucket(c.bucketName)
 	if err != nil {
-		return fmt.Errorf("error getting bucket: %#v", err)
+		return fmt.Errorf("error getting bucket: %w", err)
 	}
 
 	body := bytes.NewReader(data)
@@ -116,7 +118,7 @@ func (c *RemoteClient) Put(data []byte) error {
 
 	if body != nil {
 		if err := bucket.PutObject(c.stateFile, body, options...); err != nil {
-			return fmt.Errorf("failed to upload state %s: %#v", c.stateFile, err)
+			return fmt.Errorf("failed to upload state %s: %w", c.stateFile, err)
 		}
 	}
 
@@ -124,7 +126,7 @@ func (c *RemoteClient) Put(data []byte) error {
 	if err := c.putMD5(sum[:]); err != nil {
 		// if this errors out, we unfortunately have to error out altogether,
 		// since the next Get will inevitably fail.
-		return fmt.Errorf("failed to store state MD5: %s", err)
+		return fmt.Errorf("failed to store state MD5: %w", err)
 	}
 	return nil
 }
@@ -132,13 +134,13 @@ func (c *RemoteClient) Put(data []byte) error {
 func (c *RemoteClient) Delete() error {
 	bucket, err := c.ossClient.Bucket(c.bucketName)
 	if err != nil {
-		return fmt.Errorf("error getting bucket %s: %#v", c.bucketName, err)
+		return fmt.Errorf("error getting bucket %s: %w", c.bucketName, err)
 	}
 
 	log.Printf("[DEBUG] Deleting remote state from OSS: %#v", c.stateFile)
 
 	if err := bucket.DeleteObject(c.stateFile); err != nil {
-		return fmt.Errorf("error deleting state %s: %#v", c.stateFile, err)
+		return fmt.Errorf("error deleting state %s: %w", c.stateFile, err)
 	}
 
 	if err := c.deleteMD5(); err != nil {
@@ -189,10 +191,10 @@ func (c *RemoteClient) Lock(info *statemgr.LockInfo) (string, error) {
 		PutRowChange: putParams,
 	})
 	if err != nil {
-		err = fmt.Errorf("invoking PutRow got an error: %#v", err)
+		err = fmt.Errorf("invoking PutRow got an error: %w", err)
 		lockInfo, infoErr := c.getLockInfo()
 		if infoErr != nil {
-			err = multierror.Append(err, fmt.Errorf("\ngetting lock info got an error: %#v", infoErr))
+			err = multierror.Append(err, fmt.Errorf("\ngetting lock info got an error: %w", infoErr))
 		}
 		lockErr := &statemgr.LockError{
 			Err:  err,
@@ -367,7 +369,7 @@ func (c *RemoteClient) Unlock(id string) error {
 
 	lockInfo, err := c.getLockInfo()
 	if err != nil {
-		lockErr.Err = fmt.Errorf("failed to retrieve lock info: %s", err)
+		lockErr.Err = fmt.Errorf("failed to retrieve lock info: %w", err)
 		return lockErr
 	}
 	lockErr.Info = lockInfo
@@ -410,11 +412,11 @@ func (c *RemoteClient) lockPath() string {
 func (c *RemoteClient) getObj() (*remote.Payload, error) {
 	bucket, err := c.ossClient.Bucket(c.bucketName)
 	if err != nil {
-		return nil, fmt.Errorf("error getting bucket %s: %#v", c.bucketName, err)
+		return nil, fmt.Errorf("error getting bucket %s: %w", c.bucketName, err)
 	}
 
 	if exist, err := bucket.IsObjectExist(c.stateFile); err != nil {
-		return nil, fmt.Errorf("estimating object %s is exist got an error: %#v", c.stateFile, err)
+		return nil, fmt.Errorf("estimating object %s is exist got an error: %w", c.stateFile, err)
 	} else if !exist {
 		return nil, nil
 	}
@@ -422,12 +424,12 @@ func (c *RemoteClient) getObj() (*remote.Payload, error) {
 	var options []oss.Option
 	output, err := bucket.GetObject(c.stateFile, options...)
 	if err != nil {
-		return nil, fmt.Errorf("error getting object: %#v", err)
+		return nil, fmt.Errorf("error getting object: %w", err)
 	}
 
 	buf := bytes.NewBuffer(nil)
 	if _, err := io.Copy(buf, output); err != nil {
-		return nil, fmt.Errorf("failed to read remote state: %s", err)
+		return nil, fmt.Errorf("failed to read remote state: %w", err)
 	}
 	sum := md5.Sum(buf.Bytes())
 	payload := &remote.Payload{
@@ -441,6 +443,10 @@ func (c *RemoteClient) getObj() (*remote.Payload, error) {
 	}
 
 	return payload, nil
+}
+
+func (c *RemoteClient) IsLockingEnabled() bool {
+	return c.otsTable != ""
 }
 
 const errBadChecksumFmt = `state data in OSS does not have the expected content.

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Copyright (c) HashiCorp, Inc.
+# Copyright (c) The OpenTofu Authors
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2023 HashiCorp, Inc.
 # SPDX-License-Identifier: MPL-2.0
 
 set -uo pipefail
@@ -10,14 +12,14 @@ Usage: ./equivalence-test.sh <command> [<args>] [<options>]
 
 Description:
   This script will handle various commands related to the execution of the
-  opentf equivalence tests.
+  tofu equivalence tests.
 
 Commands:
   download_equivalence_test_binary <version> <target> <os> <arch>
     download_equivalence_test_binary downloads the equivalence testing binary
     for a given version and places it at the target path.
 
-    ./equivalence-test.sh download_equivalence_test_binary 0.3.0 ./bin/opentf-equivalence-testing linux amd64
+    ./equivalence-test.sh download_equivalence_test_binary 0.4.0 ./bin/equivalence-testing linux amd64
 EOF
 }
 
@@ -35,18 +37,18 @@ function download_equivalence_test_binary {
 
   curl \
     -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/hashicorp/terraform-equivalence-testing/releases" > releases.json
+    "https://api.github.com/repos/opentofu/equivalence-testing/releases" > releases.json
 
-  ASSET="opentf-equivalence-testing_v${VERSION}_${OS}_${ARCH}.zip"
+  ASSET="equivalence-testing_v${VERSION}_${OS}_${ARCH}.zip"
   ASSET_ID=$(jq -r --arg VERSION "v$VERSION" --arg ASSET "$ASSET" '.[] | select(.name == $VERSION) | .assets[] | select(.name == $ASSET) | .id' releases.json)
 
   mkdir -p zip
   curl -L \
     -H "Accept: application/octet-stream" \
-    "https://api.github.com/repos/hashicorp/terraform-equivalence-testing/releases/assets/$ASSET_ID" > "zip/$ASSET"
+    "https://api.github.com/repos/opentofu/equivalence-testing/releases/assets/$ASSET_ID" > "zip/$ASSET"
 
   mkdir -p bin
-  unzip -p "zip/$ASSET" terraform-equivalence-testing > "$TARGET"
+  unzip -p "zip/$ASSET" equivalence-testing > "$TARGET"
   chmod u+x "$TARGET"
   rm -r zip
   rm releases.json

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package hcl2shim
@@ -90,7 +92,7 @@ func requiresReplacePath(k string, ty cty.Type) (cty.Path, error) {
 
 	path, err := pathFromFlatmapKeyObject(k, ty.AttributeTypes())
 	if err != nil {
-		return path, fmt.Errorf("[%s] %s", k, err)
+		return path, fmt.Errorf("[%s] %w", k, err)
 	}
 	return path, nil
 }

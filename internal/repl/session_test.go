@@ -1,9 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package repl
 
 import (
+	"context"
 	"flag"
 	"os"
 	"strings"
@@ -12,14 +15,14 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/initwd"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/initwd"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/tofu"
 
-	_ "github.com/placeholderplaceholderplaceholder/opentf/internal/logging"
+	_ "github.com/opentofu/opentofu/internal/logging"
 )
 
 func TestMain(m *testing.M) {
@@ -43,6 +46,7 @@ func TestSession_basicState(t *testing.T) {
 				Provider: addrs.NewDefaultProvider("test"),
 				Module:   addrs.RootModule,
 			},
+			addrs.NoKey,
 		)
 		s.SetResourceInstanceCurrent(
 			addrs.Resource{
@@ -58,6 +62,7 @@ func TestSession_basicState(t *testing.T) {
 				Provider: addrs.NewDefaultProvider("test"),
 				Module:   addrs.RootModule,
 			},
+			addrs.NoKey,
 		)
 	})
 
@@ -261,7 +266,7 @@ func TestSession_stateless(t *testing.T) {
 func testSession(t *testing.T, test testSessionTest) {
 	t.Helper()
 
-	p := &opentf.MockProvider{}
+	p := &tofu.MockProvider{}
 	p.GetProviderSchemaResponse = &providers.GetProviderSchemaResponse{
 		ResourceTypes: map[string]providers.Schema{
 			"test_instance": {
@@ -281,7 +286,7 @@ func testSession(t *testing.T, test testSessionTest) {
 	}
 
 	// Build the TF context
-	ctx, diags := opentf.NewContext(&opentf.ContextOpts{
+	ctx, diags := tofu.NewContext(&tofu.ContextOpts{
 		Providers: map[addrs.Provider]providers.Factory{
 			addrs.NewDefaultProvider("test"): providers.FactoryFixed(p),
 		},
@@ -294,7 +299,7 @@ func testSession(t *testing.T, test testSessionTest) {
 	if state == nil {
 		state = states.NewState()
 	}
-	scope, diags := ctx.Eval(config, state, addrs.RootModuleInstance, &opentf.EvalOpts{})
+	scope, diags := ctx.Eval(context.Background(), config, state, addrs.RootModuleInstance, &tofu.EvalOpts{})
 	if diags.HasErrors() {
 		t.Fatalf("failed to create scope: %s", diags.Err())
 	}
@@ -369,7 +374,7 @@ func TestTypeString(t *testing.T) {
 		Input cty.Value
 		Want  string
 	}{
-		// Primititves
+		// Primitives
 		{
 			cty.StringVal("a"),
 			"string",

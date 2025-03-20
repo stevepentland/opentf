@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package hcl2shim
@@ -197,7 +199,7 @@ func hcl2ValueFromFlatmapPrimitive(m map[string]string, key string, ty cty.Type)
 	if err != nil {
 		// This should never happen for _valid_ input, but flatmap data might
 		// be tampered with by the user and become invalid.
-		return cty.DynamicVal, fmt.Errorf("invalid value for %q in state: %s", key, err)
+		return cty.DynamicVal, fmt.Errorf("invalid value for %q in state: %w", key, err)
 	}
 
 	return val, nil
@@ -234,7 +236,7 @@ func hcl2ValueFromFlatmapTuple(m map[string]string, prefix string, etys []cty.Ty
 
 	count, err := strconv.Atoi(countStr)
 	if err != nil {
-		return cty.DynamicVal, fmt.Errorf("invalid count value for %q in state: %s", prefix, err)
+		return cty.DynamicVal, fmt.Errorf("invalid count value for %q in state: %w", prefix, err)
 	}
 	if count != len(etys) {
 		return cty.DynamicVal, fmt.Errorf("wrong number of values for %q in state: got %d, but need %d", prefix, count, len(etys))
@@ -319,7 +321,7 @@ func hcl2ValueFromFlatmapList(m map[string]string, prefix string, ty cty.Type) (
 
 	count, err := strconv.Atoi(countStr)
 	if err != nil {
-		return cty.DynamicVal, fmt.Errorf("invalid count value for %q in state: %s", prefix, err)
+		return cty.DynamicVal, fmt.Errorf("invalid count value for %q in state: %w", prefix, err)
 	}
 
 	ety := ty.ElementType()

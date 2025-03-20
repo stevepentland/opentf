@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -9,12 +11,12 @@ import (
 
 	"github.com/mitchellh/cli"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/clistate"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/clistate"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 // StateRmCommand is a Command implementation that shows a single resource.
@@ -47,8 +49,15 @@ func (c *StateRmCommand) Run(args []string) int {
 		return 1
 	}
 
+	// Load the encryption configuration
+	enc, encDiags := c.Encryption()
+	if encDiags.HasErrors() {
+		c.showDiagnostics(encDiags)
+		return 1
+	}
+
 	// Get the state
-	stateMgr, err := c.State()
+	stateMgr, err := c.State(enc)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf(errStateLoadingState, err))
 		return 1
@@ -115,7 +124,7 @@ func (c *StateRmCommand) Run(args []string) int {
 		return 0 // This is as far as we go in dry-run mode
 	}
 
-	b, backendDiags := c.Backend(nil)
+	b, backendDiags := c.Backend(nil, enc.State())
 	diags = diags.Append(backendDiags)
 	if backendDiags.HasErrors() {
 		c.showDiagnostics(diags)
@@ -123,7 +132,7 @@ func (c *StateRmCommand) Run(args []string) int {
 	}
 
 	// Get schemas, if possible, before writing state
-	var schemas *opentf.Schemas
+	var schemas *tofu.Schemas
 	if isCloudMode(b) {
 		var schemaDiags tfdiags.Diagnostics
 		schemas, schemaDiags = c.MaybeGetSchemas(state, nil)
@@ -147,7 +156,7 @@ func (c *StateRmCommand) Run(args []string) int {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Invalid target address",
-			"No matching objects found. To view the available instances, use \"opentf state list\". Please modify the address to reference a specific instance.",
+			"No matching objects found. To view the available instances, use \"tofu state list\". Please modify the address to reference a specific instance.",
 		))
 		c.showDiagnostics(diags)
 		return 1
@@ -159,14 +168,14 @@ func (c *StateRmCommand) Run(args []string) int {
 
 func (c *StateRmCommand) Help() string {
 	helpText := `
-Usage: opentf [global options] state rm [options] ADDRESS...
+Usage: tofu [global options] state (remove|rm) [options] ADDRESS...
 
-  Remove one or more items from the OpenTF state, causing OpenTF to
+  Remove one or more items from the OpenTofu state, causing OpenTofu to
   "forget" those items without first destroying them in the remote system.
 
-  This command removes one or more resource instances from the OpenTF state
+  This command removes one or more resource instances from the OpenTofu state
   based on the addresses given. You can view and list the available instances
-  with "opentf state list".
+  with "tofu state list".
 
   If you give the address of an entire module then all of the instances in
   that module and any of its child modules will be removed from the state.
@@ -179,7 +188,7 @@ Options:
   -dry-run                If set, prints out what would've been removed but
                           doesn't actually remove anything.
 
-  -backup=PATH            Path where OpenTF should write the backup
+  -backup=PATH            Path where OpenTofu should write the backup
                           state.
 
   -lock=false             Don't hold a state lock during the operation. This is
@@ -191,9 +200,18 @@ Options:
   -state=PATH             Path to the state file to update. Defaults to the
                           current workspace state.
 
-  -ignore-remote-version  Continue even if remote and local OpenTF versions
+  -ignore-remote-version  Continue even if remote and local OpenTofu versions
                           are incompatible. This may result in an unusable
                           workspace, and should be used with extreme caution.
+
+  -var 'foo=bar'          Set a value for one of the input variables in the root
+                          module of the configuration. Use this option more than
+                          once to set more than one variable.
+
+  -var-file=filename      Load variable values from the given file, in addition
+                          to the default files terraform.tfvars and *.auto.tfvars.
+                          Use this option more than once to include more than one
+                          variables file.
 
 `
 	return strings.TrimSpace(helpText)

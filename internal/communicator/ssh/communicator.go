@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package ssh
@@ -10,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net"
@@ -22,13 +23,13 @@ import (
 	"time"
 
 	"github.com/apparentlymart/go-shquot/shquot"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/communicator/remote"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/provisioners"
+	"github.com/opentofu/opentofu/internal/communicator/remote"
+	"github.com/opentofu/opentofu/internal/provisioners"
 	"github.com/zclconf/go-cty/cty"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
-	_ "github.com/placeholderplaceholderplaceholder/opentf/internal/logging"
+	_ "github.com/opentofu/opentofu/internal/logging"
 )
 
 const (
@@ -44,7 +45,7 @@ var (
 	randLock   sync.Mutex
 	randShared *rand.Rand
 
-	// enable ssh keeplive probes by default
+	// enable ssh keepalive probes by default
 	keepAliveInterval = 2 * time.Second
 
 	// max time to wait for for a KeepAlive response before considering the
@@ -103,7 +104,7 @@ func New(v cty.Value) (*Communicator, error) {
 	// Set up the random number generator once. The seed value is the
 	// time multiplied by the PID. This can overflow the int64 but that
 	// is okay. We multiply by the PID in case we have multiple processes
-	// grabbing this at the same time. This is possible with Terraform and
+	// grabbing this at the same time. This is possible with OpenTofu and
 	// if we communicate to the same host at the same instance, we could
 	// overwrite the same files. Multiplying by the PID prevents this.
 	randLock.Lock()
@@ -448,7 +449,7 @@ func (c *Communicator) UploadScript(path string, input io.Reader) error {
 	reader := bufio.NewReader(input)
 	prefix, err := reader.Peek(2)
 	if err != nil {
-		return fmt.Errorf("Error reading script: %s", err)
+		return fmt.Errorf("Error reading script: %w", err)
 	}
 	var script bytes.Buffer
 
@@ -603,7 +604,7 @@ func (c *Communicator) scpSession(scpCommand string, f func(io.Writer, *bufio.Re
 
 	if err != nil {
 		if exitErr, ok := err.(*ssh.ExitError); ok {
-			// Otherwise, we have an ExitErorr, meaning we can just read
+			// Otherwise, we have an ExitError, meaning we can just read
 			// the exit status
 			log.Printf("[ERROR] %s", exitErr)
 
@@ -635,7 +636,7 @@ func checkSCPStatus(r *bufio.Reader) error {
 		// Treat any non-zero (really 1 and 2) as fatal errors
 		message, _, err := r.ReadLine()
 		if err != nil {
-			return fmt.Errorf("Error reading error message: %s", err)
+			return fmt.Errorf("Error reading error message: %w", err)
 		}
 
 		return errors.New(string(message))
@@ -654,9 +655,9 @@ func scpUploadFile(dst string, src io.Reader, w io.Writer, r *bufio.Reader, size
 	if size == 0 {
 		// Create a temporary file where we can copy the contents of the src
 		// so that we can determine the length, since SCP is length-prefixed.
-		tf, err := ioutil.TempFile("", "terraform-upload")
+		tf, err := os.CreateTemp("", "terraform-upload")
 		if err != nil {
-			return fmt.Errorf("Error creating temporary file for upload: %s", err)
+			return fmt.Errorf("Error creating temporary file for upload: %w", err)
 		}
 		defer os.Remove(tf.Name())
 		defer tf.Close()
@@ -669,17 +670,17 @@ func scpUploadFile(dst string, src io.Reader, w io.Writer, r *bufio.Reader, size
 		// Sync the file so that the contents are definitely on disk, then
 		// read the length of it.
 		if err := tf.Sync(); err != nil {
-			return fmt.Errorf("Error creating temporary file for upload: %s", err)
+			return fmt.Errorf("Error creating temporary file for upload: %w", err)
 		}
 
 		// Seek the file to the beginning so we can re-read all of it
 		if _, err := tf.Seek(0, 0); err != nil {
-			return fmt.Errorf("Error creating temporary file for upload: %s", err)
+			return fmt.Errorf("Error creating temporary file for upload: %w", err)
 		}
 
 		fi, err := tf.Stat()
 		if err != nil {
-			return fmt.Errorf("Error creating temporary file for upload: %s", err)
+			return fmt.Errorf("Error creating temporary file for upload: %w", err)
 		}
 
 		src = tf
@@ -717,7 +718,7 @@ func scpUploadDirProtocol(name string, w io.Writer, r *bufio.Reader, f func() er
 		return err
 	}
 
-	fmt.Fprintln(w, "E")
+	_, err = fmt.Fprintln(w, "E")
 	if err != nil {
 		return err
 	}
@@ -843,13 +844,13 @@ func BastionConnectFunc(
 			pConn, err = newHttpProxyConn(p, bAddr)
 
 			if err != nil {
-				return nil, fmt.Errorf("Error connecting to proxy: %s", err)
+				return nil, fmt.Errorf("Error connecting to proxy: %w", err)
 			}
 
 			bConn, bChans, bReq, err = ssh.NewClientConn(pConn, bAddr, bConf)
 
 			if err != nil {
-				return nil, fmt.Errorf("Error creating new client connection via proxy: %s", err)
+				return nil, fmt.Errorf("Error creating new client connection via proxy: %w", err)
 			}
 
 			bastion = ssh.NewClient(bConn, bChans, bReq)
@@ -858,7 +859,7 @@ func BastionConnectFunc(
 		}
 
 		if err != nil {
-			return nil, fmt.Errorf("Error connecting to bastion: %s", err)
+			return nil, fmt.Errorf("Error connecting to bastion: %w", err)
 		}
 
 		log.Printf("[DEBUG] Connecting via bastion (%s) to host: %s", bAddr, addr)

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package command
@@ -7,11 +9,11 @@ import (
 	"log"
 	"os"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/depsfile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/depsfile"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
-// dependenclyLockFilename is the filename of the dependency lock file.
+// dependencyLockFilename is the filename of the dependency lock file.
 //
 // This file should live in the same directory as the .tf files for the
 // root module of the configuration, alongside the .terraform directory

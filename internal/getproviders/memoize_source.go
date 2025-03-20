@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package getproviders
@@ -7,7 +9,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 )
 
 // MemoizeSource is a Source that wraps another Source and remembers its
@@ -23,9 +25,9 @@ import (
 // sequentially.
 type MemoizeSource struct {
 	underlying        Source
+	mu                sync.Mutex
 	availableVersions map[addrs.Provider]memoizeAvailableVersionsRet
 	packageMetas      map[memoizePackageMetaCall]memoizePackageMetaRet
-	mu                sync.Mutex
 }
 
 type memoizeAvailableVersionsRet struct {

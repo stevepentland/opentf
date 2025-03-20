@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package cloud
@@ -6,8 +8,8 @@ package cloud
 import (
 	"testing"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	legacy "github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/opentf"
+	"github.com/opentofu/opentofu/internal/configs"
+	legacy "github.com/opentofu/opentofu/internal/legacy/tofu"
 )
 
 func TestDetectConfigChangeType(t *testing.T) {

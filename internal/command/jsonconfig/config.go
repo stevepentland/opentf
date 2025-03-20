@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package jsonconfig
@@ -11,11 +13,11 @@ import (
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/getproviders"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/getproviders"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 // Config represents the complete configuration source
@@ -26,7 +28,7 @@ type config struct {
 
 // ProviderConfig describes all of the provider configurations throughout the
 // configuration tree, flattened into a single map for convenience since
-// provider configurations are the one concept in Terraform that can span across
+// provider configurations are the one concept in OpenTofu that can span across
 // module boundaries.
 type providerConfig struct {
 	Name              string                 `json:"name,omitempty"`
@@ -119,8 +121,8 @@ type provisioner struct {
 	Expressions map[string]interface{} `json:"expressions,omitempty"`
 }
 
-// Marshal returns the json encoding of terraform configuration.
-func Marshal(c *configs.Config, schemas *opentf.Schemas) ([]byte, error) {
+// Marshal returns the json encoding of tofu configuration.
+func Marshal(c *configs.Config, schemas *tofu.Schemas) ([]byte, error) {
 	var output config
 
 	pcs := make(map[string]providerConfig)
@@ -147,7 +149,7 @@ func Marshal(c *configs.Config, schemas *opentf.Schemas) ([]byte, error) {
 
 func marshalProviderConfigs(
 	c *configs.Config,
-	schemas *opentf.Schemas,
+	schemas *tofu.Schemas,
 	m map[string]providerConfig,
 ) {
 	if c == nil {
@@ -304,7 +306,7 @@ func marshalProviderConfigs(
 	}
 }
 
-func marshalModule(c *configs.Config, schemas *opentf.Schemas, addr string) (module, error) {
+func marshalModule(c *configs.Config, schemas *tofu.Schemas, addr string) (module, error) {
 	var module module
 	var rs []resource
 
@@ -333,9 +335,9 @@ func marshalModule(c *configs.Config, schemas *opentf.Schemas, addr string) (mod
 			dependencies := make([]string, len(v.DependsOn))
 			for i, d := range v.DependsOn {
 				ref, diags := addrs.ParseRef(d)
-				// we should not get an error here, because `terraform validate`
+				// we should not get an error here, because `tofu validate`
 				// would have complained well before this point, but if we do we'll
-				// silenty skip it.
+				// silently skip it.
 				if !diags.HasErrors() {
 					dependencies[i] = ref.Subject.String()
 				}
@@ -373,7 +375,7 @@ func marshalModule(c *configs.Config, schemas *opentf.Schemas, addr string) (mod
 	return module, nil
 }
 
-func marshalModuleCalls(c *configs.Config, schemas *opentf.Schemas) map[string]moduleCall {
+func marshalModuleCalls(c *configs.Config, schemas *tofu.Schemas) map[string]moduleCall {
 	ret := make(map[string]moduleCall)
 
 	for name, mc := range c.Module.ModuleCalls {
@@ -384,7 +386,7 @@ func marshalModuleCalls(c *configs.Config, schemas *opentf.Schemas) map[string]m
 	return ret
 }
 
-func marshalModuleCall(c *configs.Config, mc *configs.ModuleCall, schemas *opentf.Schemas) moduleCall {
+func marshalModuleCall(c *configs.Config, mc *configs.ModuleCall, schemas *tofu.Schemas) moduleCall {
 	// It is possible to have a module call with a nil config.
 	if c == nil {
 		return moduleCall{}
@@ -428,9 +430,9 @@ func marshalModuleCall(c *configs.Config, mc *configs.ModuleCall, schemas *opent
 		dependencies := make([]string, len(mc.DependsOn))
 		for i, d := range mc.DependsOn {
 			ref, diags := addrs.ParseRef(d)
-			// we should not get an error here, because `terraform validate`
+			// we should not get an error here, because `tofu validate`
 			// would have complained well before this point, but if we do we'll
-			// silenty skip it.
+			// silently skip it.
 			if !diags.HasErrors() {
 				dependencies[i] = ref.Subject.String()
 			}
@@ -441,7 +443,7 @@ func marshalModuleCall(c *configs.Config, mc *configs.ModuleCall, schemas *opent
 	return ret
 }
 
-func marshalResources(resources map[string]*configs.Resource, schemas *opentf.Schemas, moduleAddr string) ([]resource, error) {
+func marshalResources(resources map[string]*configs.Resource, schemas *tofu.Schemas, moduleAddr string) ([]resource, error) {
 	var rs []resource
 	for _, v := range resources {
 		providerConfigKey := opaqueProviderKey(v.ProviderConfigAddr().StringCompact(), moduleAddr)
@@ -501,9 +503,9 @@ func marshalResources(resources map[string]*configs.Resource, schemas *opentf.Sc
 			dependencies := make([]string, len(v.DependsOn))
 			for i, d := range v.DependsOn {
 				ref, diags := addrs.ParseRef(d)
-				// we should not get an error here, because `terraform validate`
+				// we should not get an error here, because `tofu validate`
 				// would have complained well before this point, but if we do we'll
-				// silenty skip it.
+				// silently skip it.
 				if !diags.HasErrors() {
 					dependencies[i] = ref.Subject.String()
 				}
@@ -521,7 +523,7 @@ func marshalResources(resources map[string]*configs.Resource, schemas *opentf.Sc
 
 // Flatten all resource provider keys in a module and its descendents, such
 // that any resources from providers using a configuration passed through the
-// module call have a direct refernce to that provider configuration.
+// module call have a direct reference to that provider configuration.
 func normalizeModuleProviderKeys(m *module, pcs map[string]providerConfig) {
 	for i, r := range m.Resources {
 		if pc, exists := pcs[r.ProviderConfigKey]; exists {

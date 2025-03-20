@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -6,11 +8,11 @@ package views
 import (
 	"fmt"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views/json"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/views/json"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 // The Refresh view is used for the refresh command.
@@ -18,7 +20,7 @@ type Refresh interface {
 	Outputs(outputValues map[string]*states.OutputValue)
 
 	Operation() Operation
-	Hooks() []opentf.Hook
+	Hooks() []tofu.Hook
 
 	Diagnostics(diags tfdiags.Diagnostics)
 	HelpPrompt()
@@ -65,11 +67,8 @@ func (v *RefreshHuman) Operation() Operation {
 	return NewOperation(arguments.ViewHuman, v.inAutomation, v.view)
 }
 
-func (v *RefreshHuman) Hooks() []opentf.Hook {
-	return []opentf.Hook{
-		v.countHook,
-		NewUiHook(v.view),
-	}
+func (v *RefreshHuman) Hooks() []tofu.Hook {
+	return []tofu.Hook{v.countHook, NewUIOptionalHook(v.view)}
 }
 
 func (v *RefreshHuman) Diagnostics(diags tfdiags.Diagnostics) {
@@ -101,8 +100,8 @@ func (v *RefreshJSON) Operation() Operation {
 	return &OperationJSON{view: v.view}
 }
 
-func (v *RefreshJSON) Hooks() []opentf.Hook {
-	return []opentf.Hook{
+func (v *RefreshJSON) Hooks() []tofu.Hook {
+	return []tofu.Hook{
 		newJSONHook(v.view),
 	}
 }

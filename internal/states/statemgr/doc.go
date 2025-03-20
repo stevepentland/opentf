@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 // Package statemgr defines the interfaces and some supporting functionality
@@ -10,8 +12,8 @@
 // parts of state for storage.
 //
 // State managers are responsible for ensuring that stored state can be updated
-// safely across multiple, possibly-concurrent Terraform runs (with reasonable
-// constraints and limitations). The rest of Terraform considers state to be
+// safely across multiple, possibly-concurrent OpenTofu runs (with reasonable
+// constraints and limitations). The rest of OpenTofu considers state to be
 // a mutable data structure, with state managers preserving that illusion
 // by creating snapshots of the state and updating them over time.
 //

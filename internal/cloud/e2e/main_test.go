@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package main
@@ -6,20 +8,20 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	expect "github.com/Netflix/go-expect"
 	tfe "github.com/hashicorp/go-tfe"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/e2e"
-	tfversion "github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/e2e"
+	tfversion "github.com/opentofu/opentofu/version"
 )
 
-var terraformBin string
+var tofuBin string
 var cliConfigFileEnv string
 
 var tfeClient *tfe.Client
@@ -92,7 +94,7 @@ func testRunner(t *testing.T, cases testCases, orgCount int, tfEnvFlags ...strin
 
 			tmpDir := t.TempDir()
 
-			tf := e2e.NewBinary(t, terraformBin, tmpDir)
+			tf := e2e.NewBinary(t, tofuBin, tmpDir)
 			tfEnvFlags = append(tfEnvFlags, "TF_LOG=INFO")
 			tfEnvFlags = append(tfEnvFlags, cliConfigFileEnv)
 			for _, env := range tfEnvFlags {
@@ -183,7 +185,7 @@ func setTfeClient() {
 
 func setupBinary() func() {
 	log.Println("Setting up terraform binary")
-	tmpTerraformBinaryDir, err := ioutil.TempDir("", "terraform-test")
+	tmpTerraformBinaryDir, err := os.MkdirTemp("", "terraform-test")
 	if err != nil {
 		fmt.Printf("Could not create temp directory: %v\n", err)
 		os.Exit(1)
@@ -196,7 +198,8 @@ func setupBinary() func() {
 		os.Exit(1)
 	}
 	// Getting top level dir
-	dirPaths := strings.Split(currentDir, "/")
+	newDir := filepath.ToSlash(currentDir)
+	dirPaths := strings.Split(newDir, "/")
 	log.Println(currentDir)
 	topLevel := len(dirPaths) - 3
 	topDir := strings.Join(dirPaths[0:topLevel], "/")
@@ -210,7 +213,8 @@ func setupBinary() func() {
 		"go",
 		"build",
 		"-o", tmpTerraformBinaryDir,
-		"-ldflags", fmt.Sprintf("-X \"github.com/placeholderplaceholderplaceholder/opentf/version.Prerelease=%s\"", tfversion.Prerelease),
+		"-ldflags", fmt.Sprintf("-X \"github.com/opentofu/opentofu/version.Prerelease=%s\"", tfversion.Prerelease),
+		"./cmd/tofu",
 	)
 	err = cmd.Run()
 	if err != nil {
@@ -221,7 +225,7 @@ func setupBinary() func() {
 	credFile := fmt.Sprintf("%s/dev.tfrc", tmpTerraformBinaryDir)
 	writeCredRC(credFile)
 
-	terraformBin = fmt.Sprintf("%s/terraform", tmpTerraformBinaryDir)
+	tofuBin = fmt.Sprintf("%s/terraform", tmpTerraformBinaryDir)
 	cliConfigFileEnv = fmt.Sprintf("TF_CLI_CONFIG_FILE=%s", credFile)
 
 	return func() {

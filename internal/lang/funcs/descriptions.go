@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package funcs
@@ -18,7 +20,7 @@ type descriptionEntry struct {
 }
 
 // DescriptionList is a consolidated list containing all descriptions for all
-// functions available within OpenTF. A function's description should point
+// functions available within OpenTofu. A function's description should point
 // to the matching entry in this list.
 //
 // We keep this as a single list, so we can quickly review descriptions within
@@ -51,6 +53,10 @@ var DescriptionList = map[string]descriptionEntry{
 	},
 	"base64gzip": {
 		Description:      "`base64gzip` compresses a string with gzip and then encodes the result in Base64 encoding.",
+		ParamDescription: []string{""},
+	},
+	"base64gunzip": {
+		Description:      "`base64gunzip` decodes a Base64-encoded string and uncompresses the result with gzip.",
 		ParamDescription: []string{""},
 	},
 	"base64sha256": {
@@ -89,6 +95,13 @@ var DescriptionList = map[string]descriptionEntry{
 		ParamDescription: []string{
 			"",
 			"The maximum length of each chunk. All but the last element of the result is guaranteed to be of exactly this size.",
+		},
+	},
+	"cidrcontains": {
+		Description: "`cidrcontains` determines whether a given IP address or an address prefix given in CIDR notation is within a given IP network address prefix.",
+		ParamDescription: []string{
+			"`containing_prefix` must be given in CIDR notation, as defined in [RFC 4632 section 3.1](https://tools.ietf.org/html/rfc4632#section-3.1).",
+			"`contained_ip_or_prefix` is either an IP address or an address prefix given in CIDR notation.",
 		},
 	},
 	"cidrhost": {
@@ -231,6 +244,10 @@ var DescriptionList = map[string]descriptionEntry{
 		Description:      "`index` finds the element index for a given value in a list.",
 		ParamDescription: []string{"", ""},
 	},
+	"issensitive": {
+		Description:      "`issensitive` takes any value and returns `true` if the value is marked as sensitive, and `false` otherwise.",
+		ParamDescription: []string{""},
+	},
 	"join": {
 		Description: "`join` produces a string by concatenating together all elements of a given list of strings with the given delimiter.",
 		ParamDescription: []string{
@@ -341,7 +358,7 @@ var DescriptionList = map[string]descriptionEntry{
 		ParamDescription: []string{"", ""},
 	},
 	"sensitive": {
-		Description:      "`sensitive` takes any value and returns a copy of it marked so that Terraform will treat it as sensitive, with the same meaning and behavior as for [sensitive input variables](/language/values/variables#suppressing-values-in-cli-output).",
+		Description:      "`sensitive` takes any value and returns a copy of it marked so that OpenTofu will treat it as sensitive, with the same meaning and behavior as for [sensitive input variables](/language/values/variables#suppressing-values-in-cli-output).",
 		ParamDescription: []string{""},
 	},
 	"setintersection": {
@@ -414,12 +431,16 @@ var DescriptionList = map[string]descriptionEntry{
 		Description:      "`templatefile` reads the file at the given path and renders its content as a template using a supplied set of template variables.",
 		ParamDescription: []string{"", ""},
 	},
+	"templatestring": {
+		Description:      "`templatestring` processes the provided string as a template using a supplied set of template variables.",
+		ParamDescription: []string{"", ""},
+	},
 	"textdecodebase64": {
 		Description:      "`textdecodebase64` function decodes a string that was previously Base64-encoded, and then interprets the result as characters in a specified character encoding.",
 		ParamDescription: []string{"", ""},
 	},
 	"textencodebase64": {
-		Description:      "`textencodebase64` encodes the unicode characters in a given string using a specified character encoding, returning the result base64 encoded because OpenTF language strings are always sequences of unicode characters.",
+		Description:      "`textencodebase64` encodes the unicode characters in a given string using a specified character encoding, returning the result base64 encoded because OpenTofu language strings are always sequences of unicode characters.",
 		ParamDescription: []string{"", ""},
 	},
 	"timeadd": {
@@ -503,6 +524,10 @@ var DescriptionList = map[string]descriptionEntry{
 	},
 	"urlencode": {
 		Description:      "`urlencode` applies URL encoding to a given string.",
+		ParamDescription: []string{""},
+	},
+	"urldecode": {
+		Description:      "`urldecode` applies URL decoding to a given encoded string.",
 		ParamDescription: []string{""},
 	},
 	"uuid": {

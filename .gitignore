@@ -18,13 +18,24 @@ website/node_modules
 *.test
 *.iml
 
-/opentf
+/tofu
 
 website/vendor
 vendor/
 
+# VSCode debugging configurations
+.vscode/launch.json
+
 # Coverage
+coverage.html
+coverage.out
 coverage.txt
 
 # GoReleaser build directory
 dist/
+
+# Licensei cache file
+.licensei.cache
+
+# Development temp folder
+tmp

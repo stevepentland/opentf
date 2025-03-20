@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package configload
@@ -7,9 +9,10 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/terraform-svchost/disco"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/registry"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/registry"
 	"github.com/spf13/afero"
 )
 
@@ -34,7 +37,7 @@ type Config struct {
 	// ModulesDir is a path to a directory where descendent modules are
 	// (or should be) installed. (This is usually the
 	// .terraform/modules directory, in the common case where this package
-	// is being loaded from the main Terraform CLI package.)
+	// is being loaded from the main OpenTofu CLI package.)
 	ModulesDir string
 
 	// Services is the service discovery client to use when locating remote
@@ -68,7 +71,7 @@ func NewLoader(config *Config) (*Loader, error) {
 
 	err := ret.modules.readModuleManifestSnapshot()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read module manifest: %s", err)
+		return nil, fmt.Errorf("failed to read module manifest: %w", err)
 	}
 
 	return ret, nil
@@ -109,12 +112,12 @@ func (l *Loader) Parser() *configs.Parser {
 
 // Sources returns the source code cache for the underlying parser of this
 // loader. This is a shorthand for l.Parser().Sources().
-func (l *Loader) Sources() map[string][]byte {
+func (l *Loader) Sources() map[string]*hcl.File {
 	return l.parser.Sources()
 }
 
 // IsConfigDir returns true if and only if the given directory contains at
-// least one Terraform configuration file. This is a wrapper around calling
+// least one OpenTofu configuration file. This is a wrapper around calling
 // the same method name on the loader's parser.
 func (l *Loader) IsConfigDir(path string) bool {
 	return l.parser.IsConfigDir(path)

@@ -1,10 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package tf
 
 import (
-	backendInit "github.com/placeholderplaceholderplaceholder/opentf/internal/backend/init"
+	backendInit "github.com/opentofu/opentofu/internal/backend/init"
 )
 
 func init() {

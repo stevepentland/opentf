@@ -1,17 +1,18 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package e2etest
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/e2e"
+	"github.com/opentofu/opentofu/internal/e2e"
 )
 
 // TestProviderDevOverrides is a test for the special dev_overrides setting
@@ -31,7 +32,7 @@ func TestProviderDevOverrides(t *testing.T) {
 	}
 	t.Parallel()
 
-	tf := e2e.NewBinary(t, terraformBin, "testdata/provider-dev-override")
+	tf := e2e.NewBinary(t, tofuBin, "testdata/provider-dev-override")
 
 	// In order to do a decent end-to-end test for this case we will need a
 	// real enough provider plugin to try to run and make sure we are able
@@ -43,10 +44,10 @@ func TestProviderDevOverrides(t *testing.T) {
 	// such as if it stops being buildable into an independent executable.
 	providerExeDir := filepath.Join(tf.WorkDir(), "pkgdir")
 	providerExePrefix := filepath.Join(providerExeDir, "terraform-provider-test_")
-	providerExe := e2e.GoBuild("github.com/placeholderplaceholderplaceholder/opentf/internal/provider-simple/main", providerExePrefix)
+	providerExe := e2e.GoBuild("github.com/opentofu/opentofu/internal/provider-simple/main", providerExePrefix)
 	t.Logf("temporary provider executable is %s", providerExe)
 
-	err := ioutil.WriteFile(filepath.Join(tf.WorkDir(), "dev.tfrc"), []byte(fmt.Sprintf(`
+	err := os.WriteFile(filepath.Join(tf.WorkDir(), "dev.tfrc"), []byte(fmt.Sprintf(`
 		provider_installation {
 			dev_overrides {
 				"example.com/test/test" = %q
@@ -67,11 +68,11 @@ func TestProviderDevOverrides(t *testing.T) {
 		t.Errorf("configuration should depend on %s, but doesn't\n%s", want, got)
 	}
 
-	// NOTE: We're intentionally not running "opentf init" here, because
+	// NOTE: We're intentionally not running "tofu init" here, because
 	// dev overrides are always ready to use and don't need any special action
 	// to "install" them. This test is mimicking the a happy path of going
 	// directly from "go build" to validate/plan/apply without interacting
-	// with any registries, mirrors, lock files, etc. To verify "opentf
+	// with any registries, mirrors, lock files, etc. To verify "tofu
 	// init" does actually show a warning, that behavior is tested at the end.
 	stdout, stderr, err = tf.Run("validate")
 	if err != nil {
@@ -92,7 +93,7 @@ func TestProviderDevOverrides(t *testing.T) {
 	if got, want := stdout, `Provider development overrides are in effect`; !strings.Contains(got, want) {
 		t.Errorf("stdout doesn't include the warning about development overrides\nwant: %s\n%s", want, got)
 	}
-	if got, want := stderr, `Failed to query available provider packages`; !strings.Contains(got, want) {
+	if got, want := stderr, `Failed to resolve provider packages`; !strings.Contains(got, want) {
 		t.Errorf("stderr doesn't include the error about listing unavailable development provider\nwant: %s\n%s", want, got)
 	}
 }

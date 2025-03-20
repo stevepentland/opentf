@@ -1,9 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package local
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,21 +14,22 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/clistate"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configload"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/initwd"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans/planfile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statefile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/clistate"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/configs/configload"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/initwd"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/plans/planfile"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statefile"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/terminal"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 func TestLocalRun(t *testing.T) {
@@ -46,7 +50,7 @@ func TestLocalRun(t *testing.T) {
 		StateLocker:  stateLocker,
 	}
 
-	_, _, diags := b.LocalRun(op)
+	_, _, diags := b.LocalRun(context.Background(), op)
 	if diags.HasErrors() {
 		t.Fatalf("unexpected error: %s", diags.Err().Error())
 	}
@@ -77,7 +81,7 @@ func TestLocalRun_error(t *testing.T) {
 		StateLocker:  stateLocker,
 	}
 
-	_, _, diags := b.LocalRun(op)
+	_, _, diags := b.LocalRun(context.Background(), op)
 	if !diags.HasErrors() {
 		t.Fatal("unexpected success")
 	}
@@ -95,7 +99,7 @@ func TestLocalRun_cloudPlan(t *testing.T) {
 
 	planPath := "./testdata/plan-bookmark/bookmark.json"
 
-	planFile, err := planfile.OpenWrapped(planPath)
+	planFile, err := planfile.OpenWrapped(planPath, encryption.PlanEncryptionDisabled())
 	if err != nil {
 		t.Fatalf("unexpected error reading planfile: %s", err)
 	}
@@ -112,7 +116,7 @@ func TestLocalRun_cloudPlan(t *testing.T) {
 		StateLocker:  stateLocker,
 	}
 
-	_, _, diags := b.LocalRun(op)
+	_, _, diags := b.LocalRun(context.Background(), op)
 	if !diags.HasErrors() {
 		t.Fatal("unexpected success")
 	}
@@ -133,7 +137,7 @@ func TestLocalRun_stalePlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error creating state file %s: %s", b.StatePath, err)
 	}
-	if err := statefile.Write(statefile.New(states.NewState(), "boop", 3), sf); err != nil {
+	if err := statefile.Write(statefile.New(states.NewState(), "boop", 3), sf, encryption.StateEncryptionDisabled()); err != nil {
 		t.Fatalf("unexpected error writing state file: %s", err)
 	}
 
@@ -178,10 +182,10 @@ func TestLocalRun_stalePlan(t *testing.T) {
 		StateFile:            stateFile,
 		Plan:                 plan,
 	}
-	if err := planfile.Create(planPath, planfileArgs); err != nil {
+	if err := planfile.Create(planPath, planfileArgs, encryption.PlanEncryptionDisabled()); err != nil {
 		t.Fatalf("unexpected error writing planfile: %s", err)
 	}
-	planFile, err := planfile.OpenWrapped(planPath)
+	planFile, err := planfile.OpenWrapped(planPath, encryption.PlanEncryptionDisabled())
 	if err != nil {
 		t.Fatalf("unexpected error reading planfile: %s", err)
 	}
@@ -198,7 +202,7 @@ func TestLocalRun_stalePlan(t *testing.T) {
 		StateLocker:  stateLocker,
 	}
 
-	_, _, diags := b.LocalRun(op)
+	_, _, diags := b.LocalRun(context.Background(), op)
 	if !diags.HasErrors() {
 		t.Fatal("unexpected success")
 	}
@@ -272,6 +276,6 @@ func (s *stateStorageThatFailsRefresh) RefreshState() error {
 	return fmt.Errorf("intentionally failing for testing purposes")
 }
 
-func (s *stateStorageThatFailsRefresh) PersistState(schemas *opentf.Schemas) error {
+func (s *stateStorageThatFailsRefresh) PersistState(schemas *tofu.Schemas) error {
 	return fmt.Errorf("unimplemented")
 }

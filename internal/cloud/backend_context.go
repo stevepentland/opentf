@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package cloud
@@ -12,21 +14,22 @@ import (
 
 	tfe "github.com/hashicorp/go-tfe"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/tofu"
 	"github.com/zclconf/go-cty/cty"
 )
 
 // LocalRun implements backend.Local
-func (b *Cloud) LocalRun(op *backend.Operation) (*backend.LocalRun, statemgr.Full, tfdiags.Diagnostics) {
+func (b *Cloud) LocalRun(_ context.Context, op *backend.Operation) (*backend.LocalRun, statemgr.Full, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 	ret := &backend.LocalRun{
-		PlanOpts: &opentf.PlanOpts{
-			Mode:    op.PlanMode,
-			Targets: op.Targets,
+		PlanOpts: &tofu.PlanOpts{
+			Mode:     op.PlanMode,
+			Targets:  op.Targets,
+			Excludes: op.Excludes,
 		},
 	}
 
@@ -63,13 +66,14 @@ func (b *Cloud) LocalRun(op *backend.Operation) (*backend.LocalRun, statemgr.Ful
 	}
 
 	// Initialize our context options
-	var opts opentf.ContextOpts
+	var opts tofu.ContextOpts
 	if v := b.ContextOpts; v != nil {
 		opts = *v
 	}
 
 	// Copy set options from the operation
 	opts.UIInput = op.UIIn
+	opts.Encryption = op.Encryption
 
 	// Load the latest state. If we enter contextFromPlanFile below then the
 	// state snapshot in the plan file must match this, or else it'll return
@@ -78,7 +82,7 @@ func (b *Cloud) LocalRun(op *backend.Operation) (*backend.LocalRun, statemgr.Ful
 	ret.InputState = stateMgr.State()
 
 	log.Printf("[TRACE] cloud: loading configuration for the current working directory")
-	config, configDiags := op.ConfigLoader.LoadConfig(op.ConfigDir)
+	config, configDiags := op.ConfigLoader.LoadConfig(op.ConfigDir, op.RootCall)
 	diags = diags.Append(configDiags)
 	if configDiags.HasErrors() {
 		return nil, nil, diags
@@ -143,11 +147,11 @@ func (b *Cloud) LocalRun(op *backend.Operation) (*backend.LocalRun, statemgr.Ful
 		}
 	}
 
-	tfCtx, ctxDiags := opentf.NewContext(&opts)
+	tfCtx, ctxDiags := tofu.NewContext(&opts)
 	diags = diags.Append(ctxDiags)
 	ret.Core = tfCtx
 
-	log.Printf("[TRACE] cloud: finished building opentf.Context")
+	log.Printf("[TRACE] cloud: finished building tofu.Context")
 
 	return ret, stateMgr, diags
 }
@@ -183,24 +187,24 @@ func (b *Cloud) getRemoteWorkspaceID(ctx context.Context, localWorkspaceName str
 	return remoteWorkspace.ID, nil
 }
 
-func stubAllVariables(vv map[string]backend.UnparsedVariableValue, decls map[string]*configs.Variable) opentf.InputValues {
-	ret := make(opentf.InputValues, len(decls))
+func stubAllVariables(vv map[string]backend.UnparsedVariableValue, decls map[string]*configs.Variable) tofu.InputValues {
+	ret := make(tofu.InputValues, len(decls))
 
 	for name, cfg := range decls {
 		raw, exists := vv[name]
 		if !exists {
-			ret[name] = &opentf.InputValue{
+			ret[name] = &tofu.InputValue{
 				Value:      cty.UnknownVal(cfg.Type),
-				SourceType: opentf.ValueFromConfig,
+				SourceType: tofu.ValueFromConfig,
 			}
 			continue
 		}
 
 		val, diags := raw.ParseVariableValue(cfg.ParsingMode)
 		if diags.HasErrors() {
-			ret[name] = &opentf.InputValue{
+			ret[name] = &tofu.InputValue{
 				Value:      cty.UnknownVal(cfg.Type),
-				SourceType: opentf.ValueFromConfig,
+				SourceType: tofu.ValueFromConfig,
 			}
 			continue
 		}
@@ -219,7 +223,7 @@ type remoteStoredVariableValue struct {
 
 var _ backend.UnparsedVariableValue = (*remoteStoredVariableValue)(nil)
 
-func (v *remoteStoredVariableValue) ParseVariableValue(mode configs.VariableParsingMode) (*opentf.InputValue, tfdiags.Diagnostics) {
+func (v *remoteStoredVariableValue) ParseVariableValue(mode configs.VariableParsingMode) (*tofu.InputValue, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 	var val cty.Value
 
@@ -282,14 +286,14 @@ func (v *remoteStoredVariableValue) ParseVariableValue(mode configs.VariablePars
 		val = cty.StringVal(v.definition.Value)
 	}
 
-	return &opentf.InputValue{
+	return &tofu.InputValue{
 		Value: val,
 
 		// We mark these as "from input" with the rationale that entering
 		// variable values into the Terraform Cloud or Enterprise UI is,
 		// roughly speaking, a similar idea to entering variable values at
-		// the interactive CLI prompts. It's not a perfect correspondance,
+		// the interactive CLI prompts. It's not a perfect correspondence,
 		// but it's closer than the other options.
-		SourceType: opentf.ValueFromInput,
+		SourceType: tofu.ValueFromInput,
 	}, diags
 }

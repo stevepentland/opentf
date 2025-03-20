@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -7,10 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/format"
-	viewsjson "github.com/placeholderplaceholderplaceholder/opentf/internal/command/views/json"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/format"
+	viewsjson "github.com/opentofu/opentofu/internal/command/views/json"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 // The Validate is used for the validate command.
@@ -36,7 +38,7 @@ func NewValidate(vt arguments.ViewType, view *View) Validate {
 }
 
 // The ValidateHuman implementation renders diagnostics in a human-readable form,
-// along with a success/failure message if Terraform is able to execute the
+// along with a success/failure message if OpenTofu is able to execute the
 // validation walk.
 type ValidateHuman struct {
 	view *View
@@ -63,9 +65,9 @@ func (v *ValidateHuman) Results(diags tfdiags.Diagnostics) int {
 	return 0
 }
 
-const validateSuccess = "[green][bold]Success![reset] The configuration is valid.\n"
+const validateSuccess = "[green][bold]Success![reset] The configuration is valid."
 
-const validateWarnings = "[green][bold]Success![reset] The configuration is valid, but there were some validation warnings as shown above.\n"
+const validateWarnings = "[green][bold]Success![reset] The configuration is valid, but there were some validation warnings as shown above."
 
 func (v *ValidateHuman) Diagnostics(diags tfdiags.Diagnostics) {
 	v.view.Diagnostics(diags)

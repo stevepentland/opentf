@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package schema
@@ -6,16 +8,16 @@ package schema
 import (
 	"fmt"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
 	"github.com/zclconf/go-cty/cty"
 )
 
 // The functions and methods in this file are concerned with the conversion
 // of this package's schema model into the slightly-lower-level schema model
-// used by Terraform core for configuration parsing.
+// used by OpenTofu core for configuration parsing.
 
 // CoreConfigSchema lowers the receiver to the schema model expected by
-// Terraform core.
+// OpenTofu core.
 //
 // This lower-level model has fewer features than the schema in this package,
 // describing only the basic structure of configuration and state values we
@@ -91,7 +93,7 @@ func (m schemaMap) CoreConfigSchema() *configschema.Block {
 func (s *Schema) coreConfigSchemaAttribute() *configschema.Attribute {
 	// The Schema.DefaultFunc capability adds some extra weirdness here since
 	// it can be combined with "Required: true" to create a situation where
-	// required-ness is conditional. Terraform Core doesn't share this concept,
+	// required-ness is conditional. OpenTofu Core doesn't share this concept,
 	// so we must sniff for this possibility here and conditionally turn
 	// off the "Required" flag if it looks like the DefaultFunc is going
 	// to provide a value.
@@ -112,7 +114,7 @@ func (s *Schema) coreConfigSchemaAttribute() *configschema.Attribute {
 		// "Required" to false and let the provider try calling its
 		// DefaultFunc again during the validate step, where it can then
 		// return the error.
-		if err != nil || (err == nil && v != nil) {
+		if err != nil || v != nil {
 			reqd = false
 			opt = true
 		}

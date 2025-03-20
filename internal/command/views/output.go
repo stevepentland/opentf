@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package views
@@ -14,10 +16,10 @@ import (
 	"github.com/zclconf/go-cty/cty/convert"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/repl"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/repl"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 // The Output view renders either one or all outputs, depending on whether or
@@ -82,13 +84,13 @@ func (v *OutputHuman) Output(name string, outputs map[string]*states.OutputValue
 		sort.Strings(ks)
 
 		for _, k := range ks {
-			v := outputs[k]
-			if v.Sensitive {
+			vs := outputs[k]
+			if vs.Sensitive && !v.view.showSensitive {
 				outputBuf.WriteString(fmt.Sprintf("%s = <sensitive>\n", k))
 				continue
 			}
 
-			result := repl.FormatValue(v.Value, 0)
+			result := repl.FormatValue(vs.Value, 0)
 			outputBuf.WriteString(fmt.Sprintf("%s = %s\n", k, result))
 		}
 	}
@@ -162,7 +164,7 @@ func (v *OutputRaw) Output(name string, outputs map[string]*states.OutputValue) 
 			tfdiags.Error,
 			"Unsupported value for raw output",
 			fmt.Sprintf(
-				"The value for output value %q won't be known until after a successful opentf apply, so -raw mode cannot print it.",
+				"The value for output value %q won't be known until after a successful tofu apply, so -raw mode cannot print it.",
 				name,
 			),
 		))
@@ -267,10 +269,10 @@ func noOutputsWarning() tfdiags.Diagnostic {
 		"No outputs found",
 		"The state file either has no outputs defined, or all the defined "+
 			"outputs are empty. Please define an output in your configuration "+
-			"with the `output` keyword and run `opentf refresh` for it to "+
+			"with the `output` keyword and run `tofu refresh` for it to "+
 			"become available. If you are using interpolation, please verify "+
 			"the interpolated value is not empty. You can use the "+
-			"`opentf console` command to assist.",
+			"`tofu console` command to assist.",
 	)
 }
 
@@ -282,7 +284,7 @@ func missingOutputError(name string) tfdiags.Diagnostic {
 		fmt.Sprintf("Output %q not found", name),
 		"The output variable requested could not be found in the state "+
 			"file. If you recently added this to your configuration, be "+
-			"sure to run `opentf apply`, since the state won't be updated "+
+			"sure to run `tofu apply`, since the state won't be updated "+
 			"with new output variables until that command is run.",
 	)
 }

@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package local
@@ -14,20 +16,21 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/arguments"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/clistate"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/views"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs/configschema"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/depsfile"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/initwd"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/providers"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/states/statemgr"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/terminal"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/command/arguments"
+	"github.com/opentofu/opentofu/internal/command/clistate"
+	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
+	"github.com/opentofu/opentofu/internal/depsfile"
+	"github.com/opentofu/opentofu/internal/encryption"
+	"github.com/opentofu/opentofu/internal/initwd"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/providers"
+	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statemgr"
+	"github.com/opentofu/opentofu/internal/terminal"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 func TestLocal_applyBasic(t *testing.T) {
@@ -66,7 +69,7 @@ func TestLocal_applyBasic(t *testing.T) {
 	checkState(t, b.StateOutPath, `
 test_instance.foo:
   ID = yes
-  provider = provider["registry.terraform.io/hashicorp/test"]
+  provider = provider["registry.opentofu.org/hashicorp/test"]
   ami = bar
 `)
 
@@ -241,7 +244,7 @@ func TestLocal_applyError(t *testing.T) {
 	checkState(t, b.StateOutPath, `
 test_instance.foo:
   ID = foo
-  provider = provider["registry.terraform.io/hashicorp/test"]
+  provider = provider["registry.opentofu.org/hashicorp/test"]
   ami = bar
 	`)
 
@@ -308,7 +311,7 @@ func TestLocal_applyBackendFail(t *testing.T) {
 	checkState(t, "errored.tfstate", `
 test_instance.foo: (tainted)
   ID = yes
-  provider = provider["registry.terraform.io/hashicorp/test"]
+  provider = provider["registry.opentofu.org/hashicorp/test"]
   ami = bar
 	`)
 
@@ -349,7 +352,7 @@ type backendWithFailingState struct {
 
 func (b *backendWithFailingState) StateMgr(name string) (statemgr.Full, error) {
 	return &failingState{
-		statemgr.NewFilesystem("failing-state.tfstate"),
+		statemgr.NewFilesystem("failing-state.tfstate", encryption.StateEncryptionDisabled()),
 	}, nil
 }
 
@@ -372,10 +375,11 @@ func testOperationApply(t *testing.T, configDir string) (*backend.Operation, fun
 	// Many of our tests use an overridden "test" provider that's just in-memory
 	// inside the test process, not a separate plugin on disk.
 	depLocks := depsfile.NewLocks()
-	depLocks.SetProviderOverridden(addrs.MustParseProviderSourceString("registry.terraform.io/hashicorp/test"))
+	depLocks.SetProviderOverridden(addrs.MustParseProviderSourceString("registry.opentofu.org/hashicorp/test"))
 
 	return &backend.Operation{
 		Type:            backend.OperationTypeApply,
+		Encryption:      encryption.Disabled(),
 		ConfigDir:       configDir,
 		ConfigLoader:    configLoader,
 		StateLocker:     clistate.NewNoopLocker(),

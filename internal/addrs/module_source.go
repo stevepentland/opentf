@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package addrs
@@ -8,8 +10,8 @@ import (
 	"path"
 	"strings"
 
-	tfaddr "github.com/hashicorp/terraform-registry-address"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/getmodules"
+	"github.com/opentofu/opentofu/internal/getmodules"
+	tfaddr "github.com/opentofu/registry-address"
 )
 
 // ModuleSource is the general type for all three of the possible module source
@@ -54,7 +56,7 @@ var moduleSourceLocalPrefixes = []string{
 // For historical reasons this syntax is a bit overloaded, supporting three
 // different address types:
 //   - Local paths starting with either ./ or ../, which are special because
-//     OpenTF considers them to belong to the same "package" as the caller.
+//     OpenTofu considers them to belong to the same "package" as the caller.
 //   - Module registry addresses, given as either NAMESPACE/NAME/SYSTEM or
 //     HOST/NAMESPACE/NAME/SYSTEM, in which case the remote registry serves
 //     as an indirection over the third address type that follows.
@@ -85,7 +87,7 @@ func ParseModuleSource(raw string) (ModuleSource, error) {
 	// parsed as one, and anything else must fall through to be
 	// parsed as a direct remote source, where go-getter might
 	// then recognize it as a filesystem path. This is odd
-	// but matches behavior we've had since OpenTF v0.10 which
+	// but matches behavior we've had since OpenTofu v0.10 which
 	// existing modules may be relying on.
 	// (Notice that this means that there's never any path where
 	// the registry source parse error gets returned to the caller,
@@ -121,7 +123,7 @@ func ParseModuleSource(raw string) (ModuleSource, error) {
 // and then create relative references within the same directory in order
 // to ensure all modules in the package are looking at a consistent filesystem
 // layout. We also assume that modules within a package are maintained together,
-// which means that cross-cutting maintenence across all of them would be
+// which means that cross-cutting maintenance across all of them would be
 // possible.
 //
 // The actual value of a ModuleSourceLocal is a normalized relative path using
@@ -142,7 +144,7 @@ func parseModuleSourceLocal(raw string) (ModuleSourceLocal, error) {
 	// produces.
 
 	// Although using backslashes (Windows-style) is non-idiomatic, we do
-	// allow it and just normalize it away, so the rest of OpenTF will
+	// allow it and just normalize it away, so the rest of OpenTofu will
 	// only see the forward-slash form.
 	if strings.Contains(raw, `\`) {
 		// Note: We use string replacement rather than filepath.ToSlash
@@ -161,7 +163,7 @@ func parseModuleSourceLocal(raw string) (ModuleSourceLocal, error) {
 	clean := path.Clean(raw)
 
 	// However, we do need to keep a single "./" on the front if it isn't
-	// a "../" path, or else it would be ambigous with the registry address
+	// a "../" path, or else it would be ambiguous with the registry address
 	// syntax.
 	if !strings.HasPrefix(clean, "../") {
 		clean = "./" + clean
@@ -192,12 +194,12 @@ func (s ModuleSourceLocal) ForDisplay() string {
 }
 
 // ModuleSourceRegistry is a ModuleSource representing a module listed in a
-// OpenTF module registry.
+// OpenTofu module registry.
 //
 // A registry source isn't a direct source location but rather an indirection
 // over a ModuleSourceRemote. The job of a registry is to translate the
 // combination of a ModuleSourceRegistry and a module version number into
-// a concrete ModuleSourceRemote that OpenTF will then download and
+// a concrete ModuleSourceRemote that OpenTofu will then download and
 // install.
 type ModuleSourceRegistry tfaddr.Module
 
@@ -353,7 +355,7 @@ func (s ModuleSourceRemote) ForDisplay() string {
 // given path are both respected.
 //
 // This will return nonsense if given a registry address other than the one
-// that generated the reciever via a registry lookup.
+// that generated the receiver via a registry lookup.
 func (s ModuleSourceRemote) FromRegistry(given ModuleSourceRegistry) ModuleSourceRemote {
 	ret := s // not a pointer, so this is a shallow copy
 

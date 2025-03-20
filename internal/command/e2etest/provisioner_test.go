@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package e2etest
@@ -7,20 +9,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/e2e"
+	"github.com/opentofu/opentofu/internal/e2e"
 )
 
-// TestProviderDevOverrides is a test that opentf can execute a 3rd party
+// TestProviderDevOverrides is a test that tofu can execute a 3rd party
 // provisioner plugin.
 func TestProvisioner(t *testing.T) {
 	t.Parallel()
 
-	// This test reaches out to releases.hashicorp.com to download the
+	// This test reaches out to registry.opentofu.org to download the
 	// template and null providers, so it can only run if network access is
 	// allowed.
 	skipIfCannotAccessNetwork(t)
 
-	tf := e2e.NewBinary(t, terraformBin, "testdata/provisioner")
+	tf := e2e.NewBinary(t, tofuBin, "testdata/provisioner")
 
 	//// INIT
 	_, stderr, err := tf.Run("init")

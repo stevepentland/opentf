@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package schema
@@ -8,7 +10,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/opentf"
+	"github.com/opentofu/opentofu/internal/legacy/tofu"
 )
 
 func TestMultiLevelFieldReaderReadFieldExact(t *testing.T) {
@@ -103,9 +105,9 @@ func TestMultiLevelFieldReaderReadFieldMerge(t *testing.T) {
 						}),
 					},
 
-					Diff: &opentf.InstanceDiff{
-						Attributes: map[string]*opentf.ResourceAttrDiff{
-							"availability_zone": &opentf.ResourceAttrDiff{
+					Diff: &tofu.InstanceDiff{
+						Attributes: map[string]*tofu.ResourceAttrDiff{
+							"availability_zone": &tofu.ResourceAttrDiff{
 								Old:         "foo",
 								New:         "bar",
 								RequiresNew: true,
@@ -150,9 +152,9 @@ func TestMultiLevelFieldReaderReadFieldMerge(t *testing.T) {
 						}),
 					},
 
-					Diff: &opentf.InstanceDiff{
-						Attributes: map[string]*opentf.ResourceAttrDiff{
-							"availability_zone": &opentf.ResourceAttrDiff{
+					Diff: &tofu.InstanceDiff{
+						Attributes: map[string]*tofu.ResourceAttrDiff{
+							"availability_zone": &tofu.ResourceAttrDiff{
 								Old:         "foo",
 								New:         "bar",
 								NewComputed: true,
@@ -197,9 +199,9 @@ func TestMultiLevelFieldReaderReadFieldMerge(t *testing.T) {
 						}),
 					},
 
-					Diff: &opentf.InstanceDiff{
-						Attributes: map[string]*opentf.ResourceAttrDiff{
-							"config_vars.0.bar": &opentf.ResourceAttrDiff{
+					Diff: &tofu.InstanceDiff{
+						Attributes: map[string]*tofu.ResourceAttrDiff{
+							"config_vars.0.bar": &tofu.ResourceAttrDiff{
 								NewRemoved: true,
 							},
 						},

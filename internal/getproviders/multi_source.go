@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package getproviders
@@ -10,7 +12,7 @@ import (
 
 	svchost "github.com/hashicorp/terraform-svchost"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 )
 
 // MultiSource is a Source that wraps a series of other sources and combines
@@ -158,7 +160,7 @@ func ParseMultiSourceMatchingPatterns(strs []string) (MultiSourceMatchingPattern
 			} else {
 				normalHost, err := svchost.ForComparison(givenHost)
 				if err != nil {
-					return nil, fmt.Errorf("invalid hostname in provider matching pattern %q: %s", str, err)
+					return nil, fmt.Errorf("invalid hostname in provider matching pattern %q: %w", str, err)
 				}
 
 				// The remaining code below deals only with the namespace/type portions.
@@ -197,7 +199,7 @@ func ParseMultiSourceMatchingPatterns(strs []string) (MultiSourceMatchingPattern
 // is both included by the selector's include patterns and _not_ excluded
 // by its exclude patterns.
 //
-// The absense of any include patterns is treated the same as a pattern
+// The absence of any include patterns is treated the same as a pattern
 // that matches all addresses. Exclusions take priority over inclusions.
 func (s MultiSourceSelector) CanHandleProvider(addr addrs.Provider) bool {
 	switch {

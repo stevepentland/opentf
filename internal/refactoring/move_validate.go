@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package refactoring
@@ -10,11 +12,11 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/configs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/dag"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/instances"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/tfdiags"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/configs"
+	"github.com/opentofu/opentofu/internal/dag"
+	"github.com/opentofu/opentofu/internal/instances"
+	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
 // ValidateMoves tests whether all of the given move statements comply with
@@ -158,18 +160,6 @@ func ValidateMoves(stmts []MoveStatement, rootCfg *configs.Config, declaredInsts
 					StmtRange: stmt.DeclRange,
 				})
 			}
-
-			// Resource types must match.
-			if resourceTypesDiffer(absFrom, absTo) {
-				diags = diags.Append(&hcl.Diagnostic{
-					Severity: hcl.DiagError,
-					Summary:  "Resource type mismatch",
-					Detail: fmt.Sprintf(
-						"This statement declares a move from %s to %s, which is a %s of a different type.", absFrom, absTo, noun,
-					),
-				})
-			}
-
 		}
 	}
 
@@ -228,7 +218,7 @@ func validateMoveStatementGraph(g *dag.AcyclicGraph) tfdiags.Diagnostics {
 				tfdiags.Error,
 				"Self reference in move statements",
 				fmt.Sprintf(
-					"The move statement %s refers to itself the move dependency graph, which is invalid. This is a bug in OpenTF; please report it!",
+					"The move statement %s refers to itself the move dependency graph, which is invalid. This is a bug in OpenTofu; please report it!",
 					src.(*MoveStatement).Name(),
 				),
 			))
@@ -251,19 +241,6 @@ func moveableObjectExists(addr addrs.AbsMoveable, in instances.Set) bool {
 	default:
 		// The above cases should cover all of the AbsMoveable types
 		panic("unsupported AbsMoveable address type")
-	}
-}
-
-func resourceTypesDiffer(absFrom, absTo addrs.AbsMoveable) bool {
-	switch absFrom := absFrom.(type) {
-	case addrs.AbsMoveableResource:
-		// addrs.UnifyMoveEndpoints guarantees that both addresses are of the
-		// same kind, so at this point we can assume that absTo is also an
-		// addrs.AbsResourceInstance or addrs.AbsResource.
-		absTo := absTo.(addrs.AbsMoveableResource)
-		return absFrom.AffectedAbsResource().Resource.Type != absTo.AffectedAbsResource().Resource.Type
-	default:
-		return false
 	}
 }
 

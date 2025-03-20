@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package getproviders
@@ -10,7 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -23,10 +25,10 @@ import (
 	svchost "github.com/hashicorp/terraform-svchost"
 	svcauth "github.com/hashicorp/terraform-svchost/auth"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/httpclient"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/logging"
-	"github.com/placeholderplaceholderplaceholder/opentf/version"
+	"github.com/opentofu/opentofu/internal/addrs"
+	"github.com/opentofu/opentofu/internal/httpclient"
+	"github.com/opentofu/opentofu/internal/logging"
+	"github.com/opentofu/opentofu/version"
 )
 
 const (
@@ -36,7 +38,7 @@ const (
 	// can be configured to customize number of retries for module and provider
 	// discovery requests with the remote registry.
 	registryDiscoveryRetryEnvName = "TF_REGISTRY_DISCOVERY_RETRY"
-	defaultRetry                  = 1
+	registryClientDefaultRetry    = 1
 
 	// registryClientTimeoutEnvName is the name of the environment variable that
 	// can be configured to customize the timeout duration (seconds) for module
@@ -167,7 +169,7 @@ func (c *registryClient) ProviderVersions(ctx context.Context, addr addrs.Provid
 //     under the assumption that the caller previously checked that the provider
 //     and version are valid.
 //   - ErrProtocolNotSupported if the requested provider version's protocols are not
-//     supported by this version of terraform.
+//     supported by this version of tofu.
 //   - ErrUnauthorized if the registry responds with 401 or 403 status codes
 //   - ErrQueryFailed for any other operational problem.
 func (c *registryClient) PackageMeta(ctx context.Context, provider addrs.Provider, version Version, target Platform) (PackageMeta, error) {
@@ -243,14 +245,14 @@ func (c *registryClient) PackageMeta(ctx context.Context, provider addrs.Provide
 		if err != nil {
 			return PackageMeta{}, c.errQueryFailed(
 				provider,
-				fmt.Errorf("registry response includes invalid version string %q: %s", versionStr, err),
+				fmt.Errorf("registry response includes invalid version string %q: %w", versionStr, err),
 			)
 		}
 		protoVersions = append(protoVersions, v)
 	}
 	protoVersions.Sort()
 
-	// Verify that this version of terraform supports the providers' protocol
+	// Verify that this version of tofu supports the providers' protocol
 	// version(s)
 	if len(protoVersions) > 0 {
 		supportedProtos := MeetingConstraints(SupportedPluginProtocols)
@@ -282,7 +284,7 @@ func (c *registryClient) PackageMeta(ctx context.Context, provider addrs.Provide
 
 	downloadURL, err := url.Parse(body.DownloadURL)
 	if err != nil {
-		return PackageMeta{}, fmt.Errorf("registry response includes invalid download URL: %s", err)
+		return PackageMeta{}, fmt.Errorf("registry response includes invalid download URL: %w", err)
 	}
 	downloadURL = resp.Request.URL.ResolveReference(downloadURL)
 	if downloadURL.Scheme != "http" && downloadURL.Scheme != "https" {
@@ -305,7 +307,7 @@ func (c *registryClient) PackageMeta(ctx context.Context, provider addrs.Provide
 	if len(body.SHA256Sum) != sha256.Size*2 { // *2 because it's hex-encoded
 		return PackageMeta{}, c.errQueryFailed(
 			provider,
-			fmt.Errorf("registry response includes invalid SHA256 hash %q: %s", body.SHA256Sum, err),
+			fmt.Errorf("registry response includes invalid SHA256 hash %q: %w", body.SHA256Sum, err),
 		)
 	}
 
@@ -314,13 +316,13 @@ func (c *registryClient) PackageMeta(ctx context.Context, provider addrs.Provide
 	if err != nil {
 		return PackageMeta{}, c.errQueryFailed(
 			provider,
-			fmt.Errorf("registry response includes invalid SHA256 hash %q: %s", body.SHA256Sum, err),
+			fmt.Errorf("registry response includes invalid SHA256 hash %q: %w", body.SHA256Sum, err),
 		)
 	}
 
 	shasumsURL, err := url.Parse(body.SHA256SumsURL)
 	if err != nil {
-		return PackageMeta{}, fmt.Errorf("registry response includes invalid SHASUMS URL: %s", err)
+		return PackageMeta{}, fmt.Errorf("registry response includes invalid SHASUMS URL: %w", err)
 	}
 	shasumsURL = resp.Request.URL.ResolveReference(shasumsURL)
 	if shasumsURL.Scheme != "http" && shasumsURL.Scheme != "https" {
@@ -330,12 +332,12 @@ func (c *registryClient) PackageMeta(ctx context.Context, provider addrs.Provide
 	if err != nil {
 		return PackageMeta{}, c.errQueryFailed(
 			provider,
-			fmt.Errorf("failed to retrieve authentication checksums for provider: %s", err),
+			fmt.Errorf("failed to retrieve authentication checksums for provider: %w", err),
 		)
 	}
 	signatureURL, err := url.Parse(body.SHA256SumsSignatureURL)
 	if err != nil {
-		return PackageMeta{}, fmt.Errorf("registry response includes invalid SHASUMS signature URL: %s", err)
+		return PackageMeta{}, fmt.Errorf("registry response includes invalid SHASUMS signature URL: %w", err)
 	}
 	signatureURL = resp.Request.URL.ResolveReference(signatureURL)
 	if signatureURL.Scheme != "http" && signatureURL.Scheme != "https" {
@@ -345,7 +347,7 @@ func (c *registryClient) PackageMeta(ctx context.Context, provider addrs.Provide
 	if err != nil {
 		return PackageMeta{}, c.errQueryFailed(
 			provider,
-			fmt.Errorf("failed to retrieve cryptographic signature for provider: %s", err),
+			fmt.Errorf("failed to retrieve cryptographic signature for provider: %w", err),
 		)
 	}
 
@@ -357,7 +359,7 @@ func (c *registryClient) PackageMeta(ctx context.Context, provider addrs.Provide
 	ret.Authentication = PackageAuthenticationAll(
 		NewMatchingChecksumAuthentication(document, body.Filename, checksum),
 		NewArchiveChecksumAuthentication(ret.TargetPlatform, checksum),
-		NewSignatureAuthentication(document, signature, keys),
+		NewSignatureAuthentication(ret, document, signature, keys, &provider),
 	)
 
 	return ret, nil
@@ -378,7 +380,7 @@ func (c *registryClient) findClosestProtocolCompatibleVersion(ctx context.Contex
 		if err != nil {
 			return UnspecifiedVersion, ErrQueryFailed{
 				Provider: provider,
-				Wrapped:  fmt.Errorf("registry response includes invalid version string %q: %s", versionStr, err),
+				Wrapped:  fmt.Errorf("registry response includes invalid version string %q: %w", versionStr, err),
 			}
 		}
 		versionList = append(versionList, v)
@@ -394,7 +396,7 @@ FindMatch:
 			if err != nil {
 				return UnspecifiedVersion, ErrQueryFailed{
 					Provider: provider,
-					Wrapped:  fmt.Errorf("registry response includes invalid protocol string %q: %s", protoStr, err),
+					Wrapped:  fmt.Errorf("registry response includes invalid protocol string %q: %w", protoStr, err),
 				}
 			}
 			if protoVersions.Has(p) {
@@ -443,7 +445,7 @@ func (c *registryClient) getFile(url *url.URL) ([]byte, error) {
 		return nil, fmt.Errorf("%s returned from %s", resp.Status, HostFromRequest(resp.Request))
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return data, err
 	}
@@ -454,7 +456,7 @@ func (c *registryClient) getFile(url *url.URL) ([]byte, error) {
 // configureDiscoveryRetry configures the number of retries the registry client
 // will attempt for requests with retryable errors, like 502 status codes
 func configureDiscoveryRetry() {
-	discoveryRetry = defaultRetry
+	discoveryRetry = registryClientDefaultRetry
 
 	if v := os.Getenv(registryDiscoveryRetryEnvName); v != "" {
 		retry, err := strconv.Atoi(v)

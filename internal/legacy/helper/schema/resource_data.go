@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package schema
@@ -10,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/legacy/opentf"
+	"github.com/opentofu/opentofu/internal/legacy/tofu"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
 )
@@ -26,9 +28,9 @@ import (
 type ResourceData struct {
 	// Settable (internally)
 	schema       map[string]*Schema
-	config       *opentf.ResourceConfig
-	state        *opentf.InstanceState
-	diff         *opentf.InstanceDiff
+	config       *tofu.ResourceConfig
+	state        *tofu.InstanceState
+	diff         *tofu.InstanceDiff
 	meta         map[string]interface{}
 	timeouts     *ResourceTimeout
 	providerMeta cty.Value
@@ -36,7 +38,7 @@ type ResourceData struct {
 	// Don't set
 	multiReader *MultiLevelFieldReader
 	setWriter   *MapFieldWriter
-	newState    *opentf.InstanceState
+	newState    *tofu.InstanceState
 	partial     bool
 	partialMap  map[string]struct{}
 	once        sync.Once
@@ -94,7 +96,7 @@ func (d *ResourceData) GetChange(key string) (interface{}, interface{}) {
 // GetOk returns the data for the given key and whether or not the key
 // has been set to a non-zero value at some point.
 //
-// The first result will not necessarilly be nil if the value doesn't exist.
+// The first result will not necessarily be nil if the value doesn't exist.
 // The second result should be checked to determine this information.
 func (d *ResourceData) GetOk(key string) (interface{}, bool) {
 	r := d.getRaw(key, getSourceSet)
@@ -289,8 +291,8 @@ func (d *ResourceData) SetType(t string) {
 
 // State returns the new InstanceState after the diff and any Set
 // calls.
-func (d *ResourceData) State() *opentf.InstanceState {
-	var result opentf.InstanceState
+func (d *ResourceData) State() *tofu.InstanceState {
+	var result tofu.InstanceState
 	result.ID = d.Id()
 	result.Meta = d.meta
 
@@ -425,7 +427,7 @@ func (d *ResourceData) Timeout(key string) time.Duration {
 
 func (d *ResourceData) init() {
 	// Initialize the field that will store our new state
-	var copyState opentf.InstanceState
+	var copyState tofu.InstanceState
 	if d.state != nil {
 		copyState = *d.state.DeepCopy()
 	}

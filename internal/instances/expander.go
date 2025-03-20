@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package instances
@@ -8,7 +10,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -16,7 +18,7 @@ import (
 // repetition values (count and for_each in configuration) and then later
 // making use of them to fully enumerate all of the instances of an object.
 //
-// The two repeatable object types in OpenTF are modules and resources.
+// The two repeatable object types in OpenTofu are modules and resources.
 // Because resources belong to modules and modules can nest inside other
 // modules, module expansion in particular has a recursive effect that can
 // cause deep objects to expand exponentially. Expander assumes that all

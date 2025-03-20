@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package cloud
@@ -21,11 +23,11 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	tfe "github.com/hashicorp/go-tfe"
 	"github.com/hashicorp/jsonapi"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/backend"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/command/jsonformat"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/logging"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/opentf"
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/plans"
+	"github.com/opentofu/opentofu/internal/backend"
+	"github.com/opentofu/opentofu/internal/command/jsonformat"
+	"github.com/opentofu/opentofu/internal/logging"
+	"github.com/opentofu/opentofu/internal/plans"
+	"github.com/opentofu/opentofu/internal/tofu"
 )
 
 var (
@@ -70,7 +72,7 @@ func (b *Cloud) waitForRun(stopCtx, cancelCtx context.Context, op *backend.Opera
 				b.CLI.Output(b.Colorize().Color(fmt.Sprintf("Waiting for the %s to start...\n", opType)))
 			}
 			if i > 0 && b.CLI != nil {
-				// Insert a blank line to separate the ouputs.
+				// Insert a blank line to separate the outputs.
 				b.CLI.Output("")
 			}
 			return r, nil
@@ -310,7 +312,7 @@ func (b *Cloud) costEstimate(stopCtx, cancelCtx context.Context, op *backend.Ope
 			b.CLI.Output("\n------------------------------------------------------------------------")
 			return nil
 		case tfe.CostEstimateCanceled:
-			return fmt.Errorf(msgPrefix + " canceled.")
+			return fmt.Errorf("%s canceled.", msgPrefix)
 		default:
 			return fmt.Errorf("Unknown or unexpected cost estimate state: %s", ce.Status)
 		}
@@ -387,15 +389,15 @@ func (b *Cloud) checkPolicy(stopCtx, cancelCtx context.Context, op *backend.Oper
 			}
 			continue
 		case tfe.PolicyErrored:
-			return fmt.Errorf(msgPrefix + " errored.")
+			return fmt.Errorf("%s errored.", msgPrefix)
 		case tfe.PolicyHardFailed:
-			return fmt.Errorf(msgPrefix + " hard failed.")
+			return fmt.Errorf("%s hard failed.", msgPrefix)
 		case tfe.PolicySoftFailed:
 			runUrl := fmt.Sprintf(runHeader, b.hostname, b.organization, op.Workspace, r.ID)
 
 			if op.Type == backend.OperationTypePlan || op.UIOut == nil || op.UIIn == nil ||
 				!pc.Actions.IsOverridable || !pc.Permissions.CanOverride {
-				return fmt.Errorf(msgPrefix + " soft failed.\n" + runUrl)
+				return fmt.Errorf("%s soft failed.\n%s", msgPrefix, runUrl)
 			}
 
 			if op.AutoApprove {
@@ -405,16 +407,14 @@ func (b *Cloud) checkPolicy(stopCtx, cancelCtx context.Context, op *backend.Oper
 			} else if !b.input {
 				return errPolicyOverrideNeedsUIConfirmation
 			} else {
-				opts := &opentf.InputOpts{
+				opts := &tofu.InputOpts{
 					Id:          "override",
 					Query:       "\nDo you want to override the soft failed policy check?",
 					Description: "Only 'override' will be accepted to override.",
 				}
 				err = b.confirm(stopCtx, op, opts, r, "override")
 				if err != nil && err != errRunOverridden {
-					return fmt.Errorf(
-						fmt.Sprintf("Failed to override: %s\n%s\n", err.Error(), runUrl),
-					)
+					return fmt.Errorf("Failed to override: %s\n%s\n", err.Error(), runUrl)
 				}
 
 				if err != errRunOverridden {
@@ -437,7 +437,7 @@ func (b *Cloud) checkPolicy(stopCtx, cancelCtx context.Context, op *backend.Oper
 	return nil
 }
 
-func (b *Cloud) confirm(stopCtx context.Context, op *backend.Operation, opts *opentf.InputOpts, r *tfe.Run, keyword string) error {
+func (b *Cloud) confirm(stopCtx context.Context, op *backend.Operation, opts *tofu.InputOpts, r *tfe.Run, keyword string) error {
 	doneCtx, cancel := context.WithCancel(stopCtx)
 	result := make(chan error, 2)
 
@@ -502,7 +502,7 @@ func (b *Cloud) confirm(stopCtx context.Context, op *backend.Operation, opts *op
 	result <- func() error {
 		v, err := op.UIIn.Input(doneCtx, opts)
 		if err != nil && err != context.Canceled && stopCtx.Err() != context.Canceled {
-			return fmt.Errorf("Error asking %s: %v", opts.Id, err)
+			return fmt.Errorf("Error asking %s: %w", opts.Id, err)
 		}
 
 		// We return the error of our parent channel as we don't

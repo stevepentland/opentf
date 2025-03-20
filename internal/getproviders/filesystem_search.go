@@ -1,4 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright (c) The OpenTofu Authors
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2023 HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
 package getproviders
@@ -12,7 +14,7 @@ import (
 
 	svchost "github.com/hashicorp/terraform-svchost"
 
-	"github.com/placeholderplaceholderplaceholder/opentf/internal/addrs"
+	"github.com/opentofu/opentofu/internal/addrs"
 )
 
 // SearchLocalDirectory performs an immediate, one-off scan of the given base
@@ -30,7 +32,7 @@ func SearchLocalDirectory(baseDir string) (map[addrs.Provider]PackageMetaList, e
 	// an infinite loop, but as a measure of pragmatism we'll allow the
 	// top-level location itself to be a symlink, so that a user can
 	// potentially keep their plugins in a non-standard location but use a
-	// symlink to help Terraform find them anyway.
+	// symlink to help OpenTofu find them anyway.
 	originalBaseDir := baseDir
 	if finalDir, err := filepath.EvalSymlinks(baseDir); err == nil {
 		if finalDir != filepath.Clean(baseDir) {
@@ -47,12 +49,12 @@ func SearchLocalDirectory(baseDir string) (map[addrs.Provider]PackageMetaList, e
 
 	err := filepath.Walk(baseDir, func(fullPath string, info os.FileInfo, err error) error {
 		if err != nil {
-			return fmt.Errorf("cannot search %s: %s", fullPath, err)
+			return fmt.Errorf("cannot search %s: %w", fullPath, err)
 		}
 
 		// There are two valid directory structures that we support here...
-		// Unpacked: registry.terraform.io/hashicorp/aws/2.0.0/linux_amd64 (a directory)
-		// Packed:   registry.terraform.io/hashicorp/aws/terraform-provider-aws_2.0.0_linux_amd64.zip (a file)
+		// Unpacked: registry.opentofu.org/hashicorp/aws/2.0.0/linux_amd64 (a directory)
+		// Packed:   registry.opentofu.org/hashicorp/aws/terraform-provider-aws_2.0.0_linux_amd64.zip (a file)
 		//
 		// Both of these give us enough information to identify the package
 		// metadata.
